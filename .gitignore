@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+target
+
+# Build output
+dist
+dist-ssr
+*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Goetia — sensitive data (NEVER commit)
+# Local data store (encrypted demon data, grimoire, chronicles)
+goetia-data/
+*.enc
+*.pid
+
+# API keys, secrets, credentials
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# macOS
+.DS_Store
+**/.DS_Store

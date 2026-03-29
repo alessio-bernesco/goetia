@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#000"/>
+  <g transform="translate(256,256)">
+    <!-- 8 arrows of Chaos radiating from center -->
+    <!-- Each arrow: a thin elongated triangle pointing outward with a small arrowhead -->
+
+    <!-- Arrow shafts: 8 lines at 45° intervals -->
+    <g stroke="#c0c0c0" stroke-width="6" stroke-linecap="round" fill="none">
+      <line x1="0" y1="0" x2="0" y2="-200"/>
+      <line x1="0" y1="0" x2="141" y2="-141"/>
+      <line x1="0" y1="0" x2="200" y2="0"/>
+      <line x1="0" y1="0" x2="141" y2="141"/>
+      <line x1="0" y1="0" x2="0" y2="200"/>
+      <line x1="0" y1="0" x2="-141" y2="141"/>
+      <line x1="0" y1="0" x2="-200" y2="0"/>
+      <line x1="0" y1="0" x2="-141" y2="-141"/>
+    </g>
+
+    <!-- Arrowheads -->
+    <g fill="#c0c0c0" stroke="none">
+      <!-- N -->
+      <polygon points="0,-220 -14,-180 14,-180"/>
+      <!-- NE -->
+      <polygon points="155,-155 120,-130 130,-120"/>
+      <!-- E -->
+      <polygon points="220,0 180,-14 180,14"/>
+      <!-- SE -->
+      <polygon points="155,155 130,120 120,130"/>
+      <!-- S -->
+      <polygon points="0,220 14,180 -14,180"/>
+      <!-- SW -->
+      <polygon points="-155,155 -120,130 -130,120"/>
+      <!-- W -->
+      <polygon points="-220,0 -180,14 -180,-14"/>
+      <!-- NW -->
+      <polygon points="-155,-155 -130,-120 -120,-130"/>
+    </g>
+
+    <!-- Center circle -->
+    <circle cx="0" cy="0" r="24" fill="#000" stroke="#c0c0c0" stroke-width="4"/>
+  </g>
+</svg>

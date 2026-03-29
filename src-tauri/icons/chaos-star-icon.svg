@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <g transform="translate(256,256)">
+    <g stroke="#c0c0c0" stroke-width="6" stroke-linecap="round" fill="none">
+      <line x1="0" y1="0" x2="0" y2="-200"/>
+      <line x1="0" y1="0" x2="141" y2="-141"/>
+      <line x1="0" y1="0" x2="200" y2="0"/>
+      <line x1="0" y1="0" x2="141" y2="141"/>
+      <line x1="0" y1="0" x2="0" y2="200"/>
+      <line x1="0" y1="0" x2="-141" y2="141"/>
+      <line x1="0" y1="0" x2="-200" y2="0"/>
+      <line x1="0" y1="0" x2="-141" y2="-141"/>
+    </g>
+    <g fill="#c0c0c0" stroke="none">
+      <polygon points="0,-220 -14,-180 14,-180"/>
+      <polygon points="155,-155 120,-130 130,-120"/>
+      <polygon points="220,0 180,-14 180,14"/>
+      <polygon points="155,155 130,120 120,130"/>
+      <polygon points="0,220 14,180 -14,180"/>
+      <polygon points="-155,155 -120,130 -130,120"/>
+      <polygon points="-220,0 -180,14 -180,-14"/>
+      <polygon points="-155,-155 -130,-120 -120,-130"/>
+    </g>
+    <circle cx="0" cy="0" r="24" fill="#000" stroke="#c0c0c0" stroke-width="4"/>
+  </g>
+</svg>
