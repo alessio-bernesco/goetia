@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::crypto::cipher;
 use super::paths;
 
 /// Role in a conversation turn.
@@ -101,6 +102,45 @@ pub fn list_chronicles(demon_name: &str) -> Result<Vec<ChronicleEntry>> {
     entries.sort_by(|a, b| b.date.cmp(&a.date));
 
     Ok(entries)
+}
+
+/// Write a chronicle to disk (encrypt and persist).
+pub fn write_chronicle(
+    master_key: &[u8; 32],
+    grimoire_hash: &[u8; 32],
+    demon_name: &str,
+    chronicle: &Chronicle,
+) -> Result<String> {
+    let dir = paths::demon_chronicles_dir(demon_name)?;
+    fs::create_dir_all(&dir)?;
+
+    let filename = chronicle_filename_from(&chronicle.metadata.date);
+    let path = dir.join(&filename);
+    let path_str = path.to_string_lossy().to_string();
+
+    let json = serde_json::to_vec(chronicle)?;
+    let encrypted = cipher::encrypt(master_key, grimoire_hash, &path_str, &json)?;
+    fs::write(&path, &encrypted)
+        .with_context(|| format!("Failed to write chronicle: {}", filename))?;
+
+    Ok(filename)
+}
+
+/// Read and decrypt a single chronicle by filename.
+pub fn read_chronicle(
+    master_key: &[u8; 32],
+    demon_name: &str,
+    filename: &str,
+) -> Result<Chronicle> {
+    let dir = paths::demon_chronicles_dir(demon_name)?;
+    let path = dir.join(filename);
+    let path_str = path.to_string_lossy().to_string();
+
+    let encrypted =
+        fs::read(&path).with_context(|| format!("Failed to read chronicle: {}", filename))?;
+    let (_hash, plaintext) = cipher::decrypt(master_key, &path_str, &encrypted)?;
+    let chronicle: Chronicle = serde_json::from_slice(&plaintext)?;
+    Ok(chronicle)
 }
 
 /// Parse a DateTime from a chronicle filename.

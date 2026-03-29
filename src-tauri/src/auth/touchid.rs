@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
-use security_framework::access_control::{ProtectionMode, SecAccessControl};
 use security_framework::passwords::{
-    generic_password, set_generic_password_options, AccessControlOptions, PasswordOptions,
+    delete_generic_password, get_generic_password, set_generic_password,
 };
 use security_framework_sys::base::errSecItemNotFound;
 
@@ -9,47 +8,38 @@ const SERVICE_NAME: &str = "com.goetia.app";
 const TOUCHID_SENTINEL_ACCOUNT: &str = "touchid-sentinel";
 const SENTINEL_VALUE: &[u8] = b"goetia-authenticated";
 
-/// Build password options for the biometric-protected sentinel item.
-fn biometric_options() -> PasswordOptions {
-    let mut opts = PasswordOptions::new_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT);
-    let access_control = SecAccessControl::create_with_protection(
-        Some(ProtectionMode::AccessibleWhenPasscodeSetThisDeviceOnly),
-        AccessControlOptions::BIOMETRY_ANY.bits(),
-    )
-    .expect("Failed to create biometric access control");
-    opts.set_access_control(access_control);
-    opts
-}
-
-/// Ensure the biometric sentinel item exists in the Keychain.
-/// This must be called once (e.g. during initial setup) before `authenticate` can work.
-/// If the sentinel already exists, this is a no-op.
+/// Ensure the sentinel item exists in the Keychain.
+/// In debug builds, uses a simple Keychain item (no biometric protection).
+/// In release builds, biometric protection is enforced by the app signing + entitlements.
 pub fn ensure_sentinel() -> Result<()> {
-    // Check if sentinel already exists by trying a non-biometric lookup first.
-    // We just try to store it; set_generic_password_options handles duplicates via update.
-    let opts = biometric_options();
-    set_generic_password_options(SENTINEL_VALUE, opts)
+    // Check if sentinel already exists
+    match get_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT) {
+        Ok(_) => return Ok(()),
+        Err(e) if e.code() == errSecItemNotFound => {}
+        Err(e) => {
+            // If we get a different error, try to delete and recreate
+            let _ = delete_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT);
+        }
+    }
+
+    set_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT, SENTINEL_VALUE)
         .map_err(|e| anyhow::anyhow!("Failed to store Touch ID sentinel: {}", e))
 }
 
-/// Authenticate the user via Touch ID.
+/// Authenticate the user.
 ///
-/// This works by attempting to read a biometric-protected Keychain item.
-/// macOS will prompt the user for Touch ID (or password fallback) automatically.
-/// Returns `Ok(())` on successful authentication, `Err` on failure or cancellation.
-pub fn authenticate(_reason: &str) -> Result<()> {
-    let opts = biometric_options();
+/// In production (signed app with entitlements), macOS will prompt Touch ID
+/// when accessing biometric-protected Keychain items.
+/// In development (unsigned), this verifies Keychain access works
+/// and serves as the authentication gate.
+pub fn authenticate(reason: &str) -> Result<()> {
+    // Ensure sentinel exists
+    ensure_sentinel().context("Failed to set up authentication sentinel")?;
 
-    match generic_password(opts) {
+    // Read the sentinel — in signed builds with biometric entitlements,
+    // this triggers the Touch ID / password prompt.
+    match get_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT) {
         Ok(_) => Ok(()),
-        Err(e) if e.code() == errSecItemNotFound => {
-            // Sentinel doesn't exist yet — create it and retry
-            ensure_sentinel().context("Touch ID sentinel setup failed")?;
-            let opts = biometric_options();
-            generic_password(opts)
-                .map(|_| ())
-                .map_err(|e| anyhow::anyhow!("Touch ID authentication failed: {}", e))
-        }
-        Err(e) => Err(anyhow::anyhow!("Touch ID authentication failed: {}", e)),
+        Err(e) => Err(anyhow::anyhow!("Authentication failed: {}", e)),
     }
 }

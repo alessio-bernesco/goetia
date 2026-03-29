@@ -209,8 +209,15 @@ impl StreamAccumulator {
     }
 
     /// Try to parse the complete accumulated text as a `DemonResponse`.
+    /// Handles both raw JSON and markdown-wrapped ```json blocks.
     pub fn parse_complete(&self) -> Option<DemonResponse> {
-        serde_json::from_str(&self.accumulated).ok()
+        // Try raw JSON first
+        if let Ok(resp) = serde_json::from_str(&self.accumulated) {
+            return Some(resp);
+        }
+        // Try extracting from ```json block
+        let json_str = extract_json_block(&self.accumulated)?;
+        serde_json::from_str(json_str).ok()
     }
 
     /// Try to extract the `"text"` field progressively from partial JSON.
@@ -224,6 +231,15 @@ impl Default for StreamAccumulator {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Extract a JSON block from markdown-wrapped text (```json ... ```).
+fn extract_json_block(text: &str) -> Option<&str> {
+    let start = text.find("```json")?;
+    let json_start = start + "```json".len();
+    let remaining = &text[json_start..];
+    let end = remaining.find("```")?;
+    Some(remaining[..end].trim())
 }
 
 /// Try to extract the `"text"` field from potentially incomplete JSON.

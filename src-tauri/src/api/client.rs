@@ -6,8 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use super::streaming::SSEEvent;
 
-/// Model constant for Claude Opus
-pub const CLAUDE_OPUS_MODEL: &str = "claude-opus-4-6";
+/// Available models
+pub const CLAUDE_OPUS: &str = "claude-opus-4-6";
+pub const CLAUDE_SONNET: &str = "claude-sonnet-4-6";
+pub const CLAUDE_HAIKU: &str = "claude-haiku-4-5-20251001";
+
+/// Default model
+pub const CLAUDE_OPUS_MODEL: &str = CLAUDE_OPUS;
 
 /// API endpoint
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
