@@ -67,12 +67,13 @@ pub async fn end_session(state: State<'_, AppState>) -> Result<String, String> {
     let mut lock = state.evocation_session.lock().await;
     let session = lock.as_mut().ok_or("No active evocation session")?;
 
-    let essence = session.end_session().await.map_err(|e| e.to_string())?;
+    let result = session.end_session().await;
 
-    // Clear session
+    // Always clear session — even if end_session failed (API error, etc.)
+    // The Drop impl on EvocationSession releases SESSION_ACTIVE
     *lock = None;
 
-    Ok(essence)
+    result.map_err(|e| e.to_string())
 }
 
 /// Inject a past chronicle into the active session's context.

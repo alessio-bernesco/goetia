@@ -169,7 +169,7 @@ export function Circle() {
               <Banishment
                 geometry={manifest.geometry}
                 scale={manifest.scale}
-                color={manifest.color.base}
+                color={manifest.glow.color || manifest.color.base}
                 duration={3}
                 onComplete={handleDismissComplete}
               />

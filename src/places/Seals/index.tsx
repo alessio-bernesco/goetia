@@ -40,9 +40,11 @@ export function Seals() {
   const handleBanishConfirm = useCallback(async (name: string) => {
     setBanishPhase('executing');
     try {
-      const geometry = (selected?.manifest as Record<string, unknown>)?.geometry as string || 'icosahedron';
-      const colorObj = (selected?.manifest as Record<string, unknown>)?.color as Record<string, unknown> | undefined;
-      const color = (colorObj?.base as string) || '#cc4444';
+      const m = selected?.manifest as Record<string, unknown>;
+      const geometry = (m?.geometry as string) || 'icosahedron';
+      const glowObj = m?.glow as Record<string, unknown> | undefined;
+      const colorObj = m?.color as Record<string, unknown> | undefined;
+      const color = (glowObj?.color as string) || (colorObj?.base as string) || '#cc4444';
 
       await invoke('banish_demon', { name });
       setBanishing({ name, geometry, color });
@@ -58,10 +60,13 @@ export function Seals() {
 
   const handleEvoke = useCallback(async (name: string) => {
     try {
+      console.log('[Seals] Starting evocation for:', name);
       await startSession(name);
+      console.log('[Seals] Session started, navigating to circle');
       dispatch({ type: 'NAVIGATE', place: 'circle' });
     } catch (e) {
       console.error('Evocation failed:', e);
+      alert(`Evocazione fallita: ${typeof e === 'string' ? e : (e as Error).message}`);
     }
   }, [startSession, dispatch]);
 

@@ -83,9 +83,16 @@ export function Banishment({
     pointGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(basePositions), 3));
 
     const baseColor = new THREE.Color(color);
+    // Ensure minimum brightness — very dark demons are invisible with additive blending
+    const hsl = { h: 0, s: 0, l: 0 };
+    baseColor.getHSL(hsl);
+    if (hsl.l < 0.3) {
+      baseColor.setHSL(hsl.h, Math.max(hsl.s, 0.5), 0.4);
+    }
+    baseColor.multiplyScalar(2.5);
     const mat = new THREE.PointsMaterial({
       color: baseColor,
-      size: 0.06,
+      size: 0.08,
       transparent: true,
       opacity: 1,
       sizeAttenuation: true,
@@ -125,14 +132,16 @@ export function Banishment({
     positions.needsUpdate = true;
 
     const mat = state.points.material as THREE.PointsMaterial;
-    mat.opacity = Math.max(0, 1 - progress * 1.2);
-    mat.size = 0.06 * (1 - progress * 0.5);
+    // Stay bright longer, then fade in the last 40%
+    const fadeProg = Math.max(0, (progress - 0.6) / 0.4);
+    mat.opacity = 1 - fadeProg;
+    mat.size = 0.08 * (1 + progress * 0.5) * (1 - fadeProg * 0.5);
 
-    // Fade from original color to black
+    // Keep color vivid — only desaturate slightly at the end
     mat.color.setRGB(
-      state.baseColor.r * (1 - progress),
-      state.baseColor.g * (1 - progress),
-      state.baseColor.b * (1 - progress),
+      state.baseColor.r * (1 - fadeProg * 0.5),
+      state.baseColor.g * (1 - fadeProg * 0.5),
+      state.baseColor.b * (1 - fadeProg * 0.5),
     );
 
     state.points.rotation.y += 0.01 + progress * 0.05;

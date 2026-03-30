@@ -34,11 +34,11 @@ export function GenesisVoid() {
     // Point clouds — "galaxies" orbiting at various depths
     const pointClouds: THREE.Points[] = [];
     const cloudConfigs = [
-      { count: 3000, radius: 6, pos: [-4, 2, -8], axis: new THREE.Vector3(0.3, 1, 0.1), speed: 0.003, color: 0x666666, size: 0.02 },
-      { count: 2000, radius: 4, pos: [5, -1, -6], axis: new THREE.Vector3(-0.5, 0.8, 0.3), speed: -0.002, color: 0x555577, size: 0.025 },
-      { count: 4000, radius: 8, pos: [0, 0, -12], axis: new THREE.Vector3(0.1, 0.6, -0.8), speed: 0.001, color: 0x555555, size: 0.015 },
-      { count: 1000, radius: 3, pos: [-6, -2, -4], axis: new THREE.Vector3(0.7, 0.3, 0.5), speed: 0.004, color: 0x774444, size: 0.03 },
-      { count: 1500, radius: 5, pos: [3, 3, -10], axis: new THREE.Vector3(-0.2, 1, -0.3), speed: -0.0015, color: 0x447744, size: 0.02 },
+      { count: 3000, radius: 6, pos: [-4, 2, -8], axis: new THREE.Vector3(0.3, 1, 0.1), speed: 0.003, color: 0xbbbbbb, size: 0.03 },
+      { count: 2000, radius: 4, pos: [5, -1, -6], axis: new THREE.Vector3(-0.5, 0.8, 0.3), speed: -0.002, color: 0x9999cc, size: 0.035 },
+      { count: 4000, radius: 8, pos: [0, 0, -12], axis: new THREE.Vector3(0.1, 0.6, -0.8), speed: 0.001, color: 0xaaaaaa, size: 0.025 },
+      { count: 1000, radius: 3, pos: [-6, -2, -4], axis: new THREE.Vector3(0.7, 0.3, 0.5), speed: 0.004, color: 0xcc7777, size: 0.04 },
+      { count: 1500, radius: 5, pos: [3, 3, -10], axis: new THREE.Vector3(-0.2, 1, -0.3), speed: -0.0015, color: 0x77cc77, size: 0.03 },
     ];
 
     for (const cfg of cloudConfigs) {
