@@ -30,6 +30,7 @@ pub fn compute_grimoire_hash(sections: &[&[u8]; 5]) -> [u8; 32] {
 }
 
 /// Validate that a grimoire_hash from a file header is present in the hash chain.
+#[allow(dead_code)]
 pub fn validate_against_chain(file_hash: &[u8; 32], meta: &GrimoireMeta) -> bool {
     let hex = hex_encode(file_hash);
     meta.hash_chain.contains(&hex)
@@ -47,6 +48,7 @@ pub fn create_initial_meta(sections: &[&[u8]; 5]) -> GrimoireMeta {
 }
 
 /// Upgrade grimoire metadata with new sections, preserving the hash chain.
+#[allow(dead_code)]
 pub fn upgrade_meta(existing: &GrimoireMeta, new_sections: &[&[u8]; 5]) -> GrimoireMeta {
     let hash = compute_grimoire_hash(new_sections);
     let hex = hex_encode(&hash);

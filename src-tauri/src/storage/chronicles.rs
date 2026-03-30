@@ -56,6 +56,7 @@ pub struct ChronicleEntry {
 
 /// Generate an ISO 8601 timestamp-based filename for a chronicle.
 /// Format: `2026-03-29T14-30-00Z.json.enc`
+#[allow(dead_code)]
 pub fn chronicle_filename() -> String {
     let now = Utc::now();
     format!("{}.json.enc", now.format("%Y-%m-%dT%H-%M-%SZ"))

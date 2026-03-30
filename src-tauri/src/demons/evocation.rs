@@ -11,7 +11,7 @@ use chrono::Utc;
 use futures::StreamExt;
 use tokio::pin;
 
-use crate::api::client::{AnthropicClient, Message, MessageRequest, SystemBlock, CLAUDE_OPUS_MODEL};
+use crate::api::client::{AnthropicClient, Message, MessageRequest, SystemBlock};
 use crate::api::streaming::{DemonResponse, SSEEvent, StreamAccumulator};
 use crate::crypto::grimoire_hash;
 use crate::storage;
@@ -212,11 +212,13 @@ impl EvocationSession {
     }
 
     /// Check if a session is currently active globally.
+    #[allow(dead_code)]
     pub fn is_session_active() -> bool {
         SESSION_ACTIVE.load(Ordering::SeqCst)
     }
 
     /// Force-release the session lock (for crash recovery).
+    #[allow(dead_code)]
     pub fn force_release() {
         SESSION_ACTIVE.store(false, Ordering::SeqCst);
     }

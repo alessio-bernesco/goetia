@@ -7,7 +7,7 @@
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::api::client::{AnthropicClient, Message, MessageRequest, SystemBlock, CLAUDE_OPUS_MODEL};
+use crate::api::client::{AnthropicClient, Message, MessageRequest, SystemBlock};
 use crate::api::streaming::{SSEEvent, StreamAccumulator};
 use crate::crypto::grimoire_hash;
 use crate::storage;

@@ -107,6 +107,7 @@ pub fn read_grimoire_section(master_key: &[u8; 32], section_name: &str) -> Resul
 
 /// Read and decrypt all 5 grimoire sections in canonical order.
 /// Returns (sections_as_vec, grimoire_meta).
+#[allow(dead_code)]
 pub fn read_all_sections(master_key: &[u8; 32]) -> Result<(Vec<Vec<u8>>, GrimoireMeta)> {
     let meta = read_grimoire_meta(master_key)?;
     let mut sections = Vec::with_capacity(5);

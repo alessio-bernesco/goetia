@@ -1,6 +1,6 @@
 // SSE streaming handler for token-by-token response processing
 
-use futures::stream::{self, Stream, StreamExt};
+use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -222,6 +222,7 @@ impl StreamAccumulator {
 
     /// Try to extract the `"text"` field progressively from partial JSON.
     /// Useful for showing text to the user before the full JSON is complete.
+    #[allow(dead_code)]
     pub fn extract_text_progressive(&self) -> Option<String> {
         extract_text_progressive(&self.accumulated)
     }
@@ -242,6 +243,7 @@ fn extract_json_block(text: &str) -> Option<&str> {
     Some(remaining[..end].trim())
 }
 
+#[allow(dead_code)]
 /// Try to extract the `"text"` field from potentially incomplete JSON.
 ///
 /// This handles the common pattern where the demon streams a JSON object and

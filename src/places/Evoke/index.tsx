@@ -110,7 +110,7 @@ export function Evoke() {
                 key={r.id}
                 onClick={() => setSelectedRank(r.id)}
                 style={{
-                  background: 'transparent',
+                  background: 'rgba(15, 15, 20, 0.4)',
                   border: `1px solid ${r.color}44`,
                   padding: '16px 20px',
                   cursor: 'pointer',

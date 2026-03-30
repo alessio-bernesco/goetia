@@ -8,8 +8,8 @@ use anyhow::{bail, Result};
 use std::sync::{Arc, Condvar, Mutex};
 
 use objc2::rc::Retained;
-use objc2::runtime::Bool;
-use objc2::{msg_send, msg_send_id, ClassType};
+use objc2::runtime::{AnyObject, Bool};
+use objc2::msg_send;
 use objc2_foundation::{NSError, NSString};
 
 /// Authenticate the user via Touch ID (or system password as fallback).
@@ -22,7 +22,7 @@ pub fn authenticate(reason: &str) -> Result<()> {
         // Create LAContext
         let cls = objc2::runtime::AnyClass::get(c"LAContext")
             .ok_or_else(|| anyhow::anyhow!("LAContext class not found — LocalAuthentication framework not linked"))?;
-        let context: Retained<objc2::runtime::AnyObject> = msg_send_id![cls, new];
+        let context: Retained<AnyObject> = msg_send![cls, new];
 
         // Check if biometric policy can be evaluated
         let mut error: *mut NSError = std::ptr::null_mut();
@@ -32,7 +32,7 @@ pub fn authenticate(reason: &str) -> Result<()> {
         if !can_evaluate.as_bool() {
             let desc = if !error.is_null() {
                 let err = &*error;
-                let desc: Retained<NSString> = msg_send_id![err, localizedDescription];
+                let desc: Retained<NSString> = msg_send![err, localizedDescription];
                 desc.to_string()
             } else {
                 "Autenticazione biometrica non disponibile".to_string()
@@ -51,7 +51,7 @@ pub fn authenticate(reason: &str) -> Result<()> {
             } else {
                 let msg = if !err.is_null() {
                     let err = &*err;
-                    let desc: Retained<NSString> = msg_send_id![err, localizedDescription];
+                    let desc: Retained<NSString> = msg_send![err, localizedDescription];
                     desc.to_string()
                 } else {
                     "Autenticazione rifiutata".to_string()

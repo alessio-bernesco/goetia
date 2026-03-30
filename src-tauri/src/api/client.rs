@@ -12,6 +12,7 @@ pub const CLAUDE_SONNET: &str = "claude-sonnet-4-6";
 pub const CLAUDE_HAIKU: &str = "claude-haiku-4-5-20251001";
 
 /// Default model
+#[allow(dead_code)]
 pub const CLAUDE_OPUS_MODEL: &str = CLAUDE_OPUS;
 
 /// API endpoint
@@ -55,6 +56,7 @@ pub struct Message {
 // Response types (non-streaming, for reference / error decoding)
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiError {
     #[serde(rename = "type")]
@@ -62,6 +64,7 @@ pub struct ApiError {
     pub message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiErrorResponse {
     #[serde(rename = "type")]

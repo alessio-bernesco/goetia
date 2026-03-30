@@ -45,6 +45,7 @@ pub fn has_secret(account: &str) -> Result<bool> {
 
 /// Delete a secret from the Keychain.
 /// Silently succeeds if the item does not exist.
+#[allow(dead_code)]
 pub fn delete_secret(account: &str) -> Result<()> {
     match delete_generic_password(SERVICE_NAME, account) {
         Ok(()) => Ok(()),

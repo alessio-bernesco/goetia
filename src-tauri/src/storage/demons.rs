@@ -230,6 +230,7 @@ pub fn read_demon(master_key: &[u8; 32], name: &str) -> Result<DemonData> {
 }
 
 /// Delete a demon directory entirely (used after secure wipe in banishment).
+#[allow(dead_code)]
 pub fn delete_demon_dir(name: &str) -> Result<()> {
     let dir = paths::demon_dir(name)?;
     if dir.exists() {

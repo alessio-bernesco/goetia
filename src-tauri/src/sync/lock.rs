@@ -141,6 +141,7 @@ pub fn release_icloud_lock(lock_path: &Path) -> Result<()> {
 
 /// Update the heartbeat timestamp in the lock file. Only succeeds if the
 /// current lock belongs to the given `device_id`.
+#[allow(dead_code)]
 pub fn update_heartbeat(lock_path: &Path, device_id: &str) -> Result<()> {
     let raw = fs::read_to_string(lock_path)
         .with_context(|| format!("Failed to read iCloud lock: {}", lock_path.display()))?;
