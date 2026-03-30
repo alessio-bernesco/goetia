@@ -43,6 +43,7 @@ pub fn run() {
             // Config
             commands::config_commands::list_models,
             commands::config_commands::get_model,
+            commands::config_commands::get_active_model,
             commands::config_commands::set_model,
             // Sync
             commands::sync_commands::acquire_lock,

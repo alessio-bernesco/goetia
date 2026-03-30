@@ -5,8 +5,22 @@ use std::fs;
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::api::client::{CLAUDE_HAIKU, CLAUDE_OPUS, CLAUDE_SONNET};
 use crate::crypto::cipher;
 use crate::storage::paths;
+
+fn default_rank() -> String {
+    "minor".to_string()
+}
+
+/// Convert demon rank to model ID.
+pub fn rank_to_model(rank: &str) -> &'static str {
+    match rank {
+        "minor" => CLAUDE_HAIKU,
+        "major" => CLAUDE_SONNET,
+        _ => CLAUDE_OPUS,
+    }
+}
 
 /// Geometrie ammesse — elenco chiuso, non negoziabile.
 const VALID_GEOMETRIES: &[&str] = &[
@@ -18,9 +32,14 @@ const VALID_GEOMETRIES: &[&str] = &[
     "tetrahedron",
 ];
 
+/// Ranghi ammessi: minor (Haiku), major (Sonnet), prince (Opus).
+const VALID_RANKS: &[&str] = &["minor", "major", "prince"];
+
 /// Demon manifest — visual form parameters, immutable after genesis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DemonManifest {
+    #[serde(default = "default_rank")]
+    pub rank: String,
     pub geometry: String,
     pub scale: f64,
     pub color: ColorConfig,
@@ -99,6 +118,15 @@ pub fn create_demon(
 ) -> Result<()> {
     // Validate name (no path traversal, no special chars)
     validate_demon_name(name)?;
+
+    // Validate rank
+    if !VALID_RANKS.contains(&manifest.rank.as_str()) {
+        bail!(
+            "Rango non ammesso: '{}'. Ranghi validi: {}",
+            manifest.rank,
+            VALID_RANKS.join(", ")
+        );
+    }
 
     // Validate geometry — elenco chiuso, rifiuta qualsiasi altra cosa
     if !VALID_GEOMETRIES.contains(&manifest.geometry.as_str()) {

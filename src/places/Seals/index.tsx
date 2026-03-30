@@ -86,8 +86,13 @@ export function Seals() {
 
   // Detail view
   if (selected) {
+    const manifest = selected.manifest as Record<string, unknown>;
+    const rank = (manifest.rank as string) || 'prince';
+    const rankLabel = rank === 'minor' ? 'DEMONE MINORE' : rank === 'major' ? 'DEMONE MAGGIORE' : 'PRINCIPE';
+
     const sealLines = [
       { role: 'system' as const, content: `── SIGILLO: ${selected.name.toUpperCase()} ──` },
+      { role: 'system' as const, content: `   rango: ${rankLabel}` },
       { role: 'system' as const, content: '' },
       ...selected.seal.split('\n').map(line => ({ role: 'demon' as const, content: line })),
     ];
@@ -167,54 +172,80 @@ export function Seals() {
     );
   }
 
-  // Gallery
+  // Gallery — grouped by rank
+  const rankGroups: { id: string; label: string; color: string }[] = [
+    { id: 'prince', label: 'PRINCIPI', color: '#8a3a5a' },
+    { id: 'major', label: 'DEMONI MAGGIORI', color: '#7a6a3a' },
+    { id: 'minor', label: 'DEMONI MINORI', color: '#555' },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '20px', animation: 'breathe 3s ease-in-out infinite' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '20px', overflow: 'auto', scrollbarWidth: 'none' }}>
       <GlowText text="SIGILLI" color="#cc4444" size="11px" animate={false} glow />
-      <div style={{
-        marginTop: '24px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-        gap: '12px',
-      }}>
-        {app.demons.length === 0 && (
-          <div style={{ fontFamily: 'monospace', fontSize: '11px', color: '#666', gridColumn: '1 / -1' }}>
-            Nessun demone. Vai a GENESI per crearne uno.
-          </div>
-        )}
-        {app.demons.map(d => (
-          <button
-            key={d.name}
-            onClick={() => loadDemon(d.name)}
-            style={{
-              ...btnStyle,
-              padding: '24px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '12px',
-            }}
-          >
-            {/* Placeholder for 3D miniature */}
+
+      {app.demons.length === 0 && (
+        <div style={{ fontFamily: 'monospace', fontSize: '11px', color: '#666', marginTop: '24px' }}>
+          Nessun demone. Vai a GENESI per crearne uno.
+        </div>
+      )}
+
+      {rankGroups.map(group => {
+        const demons = app.demons.filter(d => (d.rank || 'minor') === group.id);
+        if (demons.length === 0) return null;
+        return (
+          <div key={group.id} style={{ marginTop: '24px' }}>
             <div style={{
-              width: '40px',
-              height: '40px',
-              border: '1px solid #2a2a2a',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#cc4444',
-              fontSize: '16px',
+              fontFamily: '"SF Mono", monospace',
+              fontSize: '9px',
+              letterSpacing: '0.15em',
+              color: group.color,
+              marginBottom: '10px',
+              borderBottom: `1px solid ${group.color}33`,
+              paddingBottom: '6px',
             }}>
-              {d.name.charAt(0).toUpperCase()}
+              {group.label}
             </div>
-            <span style={{ letterSpacing: '0.15em' }}>
-              {d.name.toUpperCase()}
-            </span>
-          </button>
-        ))}
-      </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: '12px',
+            }}>
+              {demons.map(d => (
+                <button
+                  key={d.name}
+                  onClick={() => loadDemon(d.name)}
+                  style={{
+                    ...btnStyle,
+                    padding: '24px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '12px',
+                    borderColor: `${group.color}44`,
+                  }}
+                >
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    border: `1px solid ${group.color}44`,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: group.color,
+                    fontSize: '16px',
+                  }}>
+                    {d.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span style={{ letterSpacing: '0.15em' }}>
+                    {d.name.toUpperCase()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

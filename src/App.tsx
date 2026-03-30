@@ -24,9 +24,9 @@ import { Evoke } from './places/Evoke';
 import { Chronicles } from './places/Chronicles';
 import { Seals } from './places/Seals';
 import { PlaceTransition } from './ritual/transitions/PlaceTransition';
-import { ModelSelector } from './ui/ModelSelector';
 import { DebugPanel } from './ui/DebugPanel';
 import { backgroundNoise } from './audio/BackgroundNoise';
+import { ambientEvents } from './audio/Ambient';
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
@@ -36,13 +36,6 @@ function App() {
 
   // Check initial state on mount
   useEffect(() => {
-    // Restore saved model
-    const savedModel = localStorage.getItem('goetia-model');
-    if (savedModel) {
-      dispatch({ type: 'SET_MODEL', model: savedModel });
-      invoke('set_model', { modelId: savedModel }).catch(() => {});
-    }
-
     (async () => {
       try {
         const hasKey = await invoke<boolean>('has_api_key');
@@ -64,12 +57,13 @@ function App() {
     dispatch({ type: 'SET_HAS_API_KEY', value: true });
     dispatch({ type: 'SET_HAS_GRIMOIRE', value: true });
 
-    // Start continuous background noise
+    // Start full soundscape
     backgroundNoise.start();
+    ambientEvents.start();
 
     // Load demon list
     try {
-      const demons = await invoke<Array<{ name: string }>>('list_demons');
+      const demons = await invoke<Array<{ name: string; rank: string }>>('list_demons');
       dispatch({ type: 'SET_DEMONS', demons });
     } catch (e) {
       console.error('Failed to load demons:', e);
@@ -114,7 +108,6 @@ function App() {
       <SessionContext.Provider value={{ state: session, dispatch: sessionDispatch }}>
         <GenesisContext.Provider value={{ state: genesis, dispatch: genesisDispatch }}>
           <div style={rootStyle}>
-            <ModelSelector />
             <SyncIndicator status={state.syncStatus} />
             <DebugPanel />
             <div style={{

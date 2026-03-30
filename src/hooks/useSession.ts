@@ -5,6 +5,7 @@ import { useCallback } from 'react';
 import { useAppState } from '../state/appState';
 import { useSessionState } from '../state/sessionState';
 import type { DemonVisualState } from '../state/appState';
+import { logPrompt } from '../ui/DebugPanel';
 
 interface MessageResult {
   text: string;
@@ -27,7 +28,9 @@ export function useSession() {
     sessionDispatch({ type: 'SET_STREAMING', streaming: true });
 
     try {
+      logPrompt({ timestamp: Date.now(), direction: 'send', content: message });
       const result = await invoke<MessageResult>('send_message', { message });
+      logPrompt({ timestamp: Date.now(), direction: 'recv', content: result.text });
       sessionDispatch({
         type: 'ADD_DEMON_TURN',
         content: result.text,

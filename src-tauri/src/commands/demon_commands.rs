@@ -15,10 +15,33 @@ pub struct DemonInfo {
     pub essence: String,
 }
 
-/// List all demon names.
+#[derive(Serialize)]
+pub struct DemonListEntry {
+    pub name: String,
+    pub rank: String,
+}
+
+/// List all demons with their rank.
 #[tauri::command]
-pub fn list_demons() -> Result<Vec<storage::DemonEntry>, String> {
-    storage::list_demons().map_err(|e| e.to_string())
+pub fn list_demons(state: State<'_, AppState>) -> Result<Vec<DemonListEntry>, String> {
+    let entries = storage::list_demons().map_err(|e| e.to_string())?;
+    let master_key = state.get_master_key().ok();
+
+    let mut result = Vec::new();
+    for entry in entries {
+        let rank = if let Some(ref key) = master_key {
+            storage::read_manifest(key, &entry.name)
+                .map(|m| m.rank)
+                .unwrap_or_else(|_| "minor".to_string())
+        } else {
+            "minor".to_string()
+        };
+        result.push(DemonListEntry {
+            name: entry.name,
+            rank,
+        });
+    }
+    Ok(result)
 }
 
 /// Get full demon data (seal + manifest + essence).

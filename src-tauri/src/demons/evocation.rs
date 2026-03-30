@@ -69,6 +69,11 @@ impl EvocationSession {
         })
     }
 
+    /// Get the model used by this evocation session.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     /// Send a message to the demon and collect the streamed response.
     pub async fn send_message(&mut self, user_message: &str) -> Result<DemonTurnResult> {
         self.messages.push(Message::user(user_message));

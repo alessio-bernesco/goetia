@@ -23,6 +23,8 @@ interface DemonManifest {
 interface DemonFormProps {
   manifest: DemonManifest;
   visualState?: DemonVisualState | null;
+  waiting?: boolean;
+  speaking?: boolean;
 }
 
 function hexToVec3(hex: string): THREE.Vector3 {
@@ -30,9 +32,11 @@ function hexToVec3(hex: string): THREE.Vector3 {
   return new THREE.Vector3(color.r, color.g, color.b);
 }
 
-export function DemonForm({ manifest, visualState }: DemonFormProps) {
+export function DemonForm({ manifest, visualState, waiting = false, speaking = false }: DemonFormProps) {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null);
+  const basePositionsRef = useRef<Float32Array | null>(null);
+  const isPointCloud = manifest.geometry === 'point_cloud';
 
   const setup = useCallback((scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
     camera.position.set(0, 0, 4);
@@ -50,6 +54,8 @@ export function DemonForm({ manifest, visualState }: DemonFormProps) {
       uGlowIntensity: { value: manifest.glow.intensity },
       uOpacity: { value: manifest.opacity },
       uValence: { value: 0 },
+      uSpeaking: { value: 0 },
+      uWaiting: { value: 0 },
     };
 
     if (manifest.geometry === 'point_cloud') {
@@ -67,6 +73,9 @@ export function DemonForm({ manifest, visualState }: DemonFormProps) {
       scene.add(points);
       meshRef.current = points as unknown as THREE.Mesh;
       uniformsRef.current = uniforms;
+      // Store original positions for speaking perturbation
+      const pos = geometry.attributes.position as THREE.BufferAttribute;
+      basePositionsRef.current = new Float32Array(pos.array);
     } else {
       // Solid form with shader — semi-transparent glowing volume
       const material = new THREE.ShaderMaterial({
@@ -125,6 +134,15 @@ export function DemonForm({ manifest, visualState }: DemonFormProps) {
 
     uniformsRef.current.uTime.value = time;
 
+    // Smooth transitions (~1s ease)
+    const speakTarget = speaking ? 1 : 0;
+    const speakCurrent = uniformsRef.current.uSpeaking.value;
+    uniformsRef.current.uSpeaking.value += (speakTarget - speakCurrent) * 0.05;
+
+    const waitTarget = waiting ? 1 : 0;
+    const waitCurrent = uniformsRef.current.uWaiting.value;
+    uniformsRef.current.uWaiting.value += (waitTarget - waitCurrent) * 0.05;
+
     // Base rotation
     meshRef.current.rotation.y += manifest.rotation_speed;
     meshRef.current.rotation.x += manifest.rotation_speed * 0.3;
@@ -133,7 +151,41 @@ export function DemonForm({ manifest, visualState }: DemonFormProps) {
     if (visualState?.arousal) {
       meshRef.current.rotation.y += manifest.rotation_speed * visualState.arousal;
     }
-  }, [manifest.rotation_speed, visualState?.arousal]);
+
+    // Point cloud: no shader, animate positions directly
+    if (isPointCloud && basePositionsRef.current) {
+      const geo = (meshRef.current as unknown as THREE.Points).geometry;
+      const pos = geo.attributes.position as THREE.BufferAttribute;
+      const base = basePositionsRef.current;
+      const speakAmt = uniformsRef.current.uSpeaking.value;
+      const waitAmt = uniformsRef.current.uWaiting.value;
+
+      if (speakAmt > 0.01 || waitAmt > 0.01) {
+        const breath = Math.sin(time * 5.0) * 0.06 * waitAmt;
+        const scale = 1.0 + breath;
+        for (let i = 0; i < pos.count; i++) {
+          const i3 = i * 3;
+          const bx = base[i3], by = base[i3 + 1], bz = base[i3 + 2];
+          // Breathing (scale from center)
+          let px = bx * scale, py = by * scale, pz = bz * scale;
+          // Speaking jitter
+          if (speakAmt > 0.01) {
+            const jitter = 0.15 * speakAmt;
+            px += Math.sin(time * 18 + by * 12) * jitter;
+            py += Math.sin(time * 23 + bz * 9) * jitter;
+            pz += Math.sin(time * 31 + bx * 15) * jitter;
+          }
+          pos.array[i3] = px;
+          pos.array[i3 + 1] = py;
+          pos.array[i3 + 2] = pz;
+        }
+        pos.needsUpdate = true;
+      } else if (pos.array[0] !== base[0]) {
+        (pos.array as Float32Array).set(base);
+        pos.needsUpdate = true;
+      }
+    }
+  }, [manifest.rotation_speed, visualState?.arousal, speaking, waiting, isPointCloud]);
 
   return <Scene children={setup} onFrame={onFrame} transparent />;
 }

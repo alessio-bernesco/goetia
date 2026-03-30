@@ -17,6 +17,10 @@ export function Scene({ children, onFrame, transparent = false }: SceneProps) {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const frameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const onFrameRef = useRef(onFrame);
+
+  // Keep ref in sync so the animation loop always calls the latest callback
+  useEffect(() => { onFrameRef.current = onFrame; }, [onFrame]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -62,7 +66,7 @@ export function Scene({ children, onFrame, transparent = false }: SceneProps) {
       const delta = (time - lastTimeRef.current) / 1000;
       lastTimeRef.current = time;
 
-      onFrame?.(time / 1000, delta);
+      onFrameRef.current?.(time / 1000, delta);
       renderer.render(scene, camera);
       frameRef.current = requestAnimationFrame(animate);
     };

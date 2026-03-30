@@ -14,6 +14,25 @@ interface CrystallizationProps {
   onComplete?: () => void;
 }
 
+const POINT_COUNT = 3000;
+
+// Sample points on a geometry surface
+function samplePoints(geo: THREE.BufferGeometry, count: number): Float32Array {
+  const posAttr = geo.attributes.position;
+  const vertexCount = posAttr.count;
+  const positions = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    const a = Math.floor(Math.random() * vertexCount);
+    const b = Math.floor(Math.random() * vertexCount);
+    const t = Math.random();
+    positions[i * 3] = posAttr.getX(a) * (1 - t) + posAttr.getX(b) * t + (Math.random() - 0.5) * 0.05;
+    positions[i * 3 + 1] = posAttr.getY(a) * (1 - t) + posAttr.getY(b) * t + (Math.random() - 0.5) * 0.05;
+    positions[i * 3 + 2] = posAttr.getZ(a) * (1 - t) + posAttr.getZ(b) * t + (Math.random() - 0.5) * 0.05;
+  }
+  return positions;
+}
+
 export function Crystallization({
   geometry,
   scale,
@@ -32,20 +51,12 @@ export function Crystallization({
   const setup = (scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
     camera.position.set(0, 0, 5);
 
-    // Create the target geometry to crystallize into
     const targetGeo = createGeometry(geometry as GeometryType, scale);
-    const targetAttr = targetGeo.attributes.position;
-    const count = targetAttr.count;
+    const targetPositions = samplePoints(targetGeo, POINT_COUNT);
 
-    // Target positions (the demon form)
-    const targetPositions = new Float32Array(count * 3);
-    for (let i = 0; i < count * 3; i++) {
-      targetPositions[i] = targetAttr.array[i];
-    }
-
-    // Start positions (scattered noise — far out, random)
-    const startPositions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
+    // Start positions (scattered noise — far out, random sphere)
+    const startPositions = new Float32Array(POINT_COUNT * 3);
+    for (let i = 0; i < POINT_COUNT; i++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const r = 3 + Math.random() * 8;
@@ -54,7 +65,6 @@ export function Crystallization({
       startPositions[i * 3 + 2] = r * Math.cos(phi);
     }
 
-    // Create points starting at scattered positions
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(startPositions), 3));
 
@@ -65,6 +75,7 @@ export function Crystallization({
       opacity: 0.8,
       sizeAttenuation: true,
       blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
 
     const points = new THREE.Points(geo, mat);
@@ -102,12 +113,10 @@ export function Crystallization({
     }
     positions.needsUpdate = true;
 
-    // Grow point size as they coalesce
     const mat = state.points.material as THREE.PointsMaterial;
     mat.size = 0.04 + t * 0.02;
     mat.opacity = 0.3 + t * 0.7;
 
-    // Slow rotation
     state.points.rotation.y += 0.005;
 
     if (progress >= 1 && !state.completed) {

@@ -22,6 +22,7 @@ pub struct GenesisSession {
     system_prompt: Vec<SystemBlock>,
     messages: Vec<Message>,
     model: String,
+    rank: String,
 }
 
 /// Parsed genesis output from the model.
@@ -35,7 +36,7 @@ pub struct GenesisOutput {
 impl GenesisSession {
     /// Start a new genesis session.
     /// Loads the grimoire and builds the genesis system prompt.
-    pub fn new(master_key: &[u8; 32], api_key: String, model: String) -> Result<Self> {
+    pub fn new(master_key: &[u8; 32], api_key: String, model: String, rank: String) -> Result<Self> {
         let system_prompt = super::context::build_genesis_prompt(master_key)?;
         let client = AnthropicClient::new(api_key);
         Ok(Self {
@@ -43,7 +44,18 @@ impl GenesisSession {
             system_prompt,
             messages: Vec::new(),
             model,
+            rank,
         })
+    }
+
+    /// Get the rank assigned to this genesis session.
+    pub fn rank(&self) -> &str {
+        &self.rank
+    }
+
+    /// Get the model used by this genesis session.
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     /// Send a message in the genesis conversation and collect the full response.

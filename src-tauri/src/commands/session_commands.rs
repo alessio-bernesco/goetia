@@ -22,7 +22,11 @@ pub async fn start_session(state: State<'_, AppState>, demon_name: String) -> Re
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "No API key configured".to_string())?;
 
-    let model = state.get_model()?;
+    // Read demon's rank from manifest to determine model
+    let manifest = crate::storage::demons::read_manifest(&master_key, &demon_name)
+        .map_err(|e| e.to_string())?;
+    let model = crate::storage::demons::rank_to_model(&manifest.rank).to_string();
+
     let session =
         EvocationSession::new(&master_key, api_key, &demon_name, model).map_err(|e| e.to_string())?;
 

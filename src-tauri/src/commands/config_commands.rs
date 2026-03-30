@@ -28,6 +28,20 @@ pub fn get_model(state: State<'_, AppState>) -> Result<String, String> {
     state.get_model()
 }
 
+/// Get the model used by the active session (evocation or genesis).
+#[tauri::command]
+pub async fn get_active_model(state: State<'_, AppState>) -> Result<String, String> {
+    // Check evocation session first
+    if let Some(session) = state.evocation_session.lock().await.as_ref() {
+        return Ok(session.model().to_string());
+    }
+    // Then genesis session
+    if let Some(session) = state.genesis_session.lock().await.as_ref() {
+        return Ok(session.model().to_string());
+    }
+    Err("Nessuna sessione attiva".to_string())
+}
+
 /// Set the active model.
 #[tauri::command]
 pub fn set_model(state: State<'_, AppState>, model_id: String) -> Result<(), String> {

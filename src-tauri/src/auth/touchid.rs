@@ -1,45 +1,80 @@
-use anyhow::{Context, Result};
-use security_framework::passwords::{
-    delete_generic_password, get_generic_password, set_generic_password,
-};
-use security_framework_sys::base::errSecItemNotFound;
+// Touch ID authentication via LocalAuthentication framework (macOS)
+//
+// Uses LAContext.evaluatePolicy to trigger the native biometric prompt.
+// Works even without code signing — macOS shows password fallback if Touch ID
+// is unavailable or the app is unsigned.
 
-const SERVICE_NAME: &str = "com.goetia.app";
-const TOUCHID_SENTINEL_ACCOUNT: &str = "touchid-sentinel";
-const SENTINEL_VALUE: &[u8] = b"goetia-authenticated";
+use anyhow::{bail, Result};
+use std::sync::{Arc, Condvar, Mutex};
 
-/// Ensure the sentinel item exists in the Keychain.
-/// In debug builds, uses a simple Keychain item (no biometric protection).
-/// In release builds, biometric protection is enforced by the app signing + entitlements.
-pub fn ensure_sentinel() -> Result<()> {
-    // Check if sentinel already exists
-    match get_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT) {
-        Ok(_) => return Ok(()),
-        Err(e) if e.code() == errSecItemNotFound => {}
-        Err(e) => {
-            // If we get a different error, try to delete and recreate
-            let _ = delete_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT);
-        }
-    }
+use objc2::rc::Retained;
+use objc2::runtime::Bool;
+use objc2::{msg_send, msg_send_id, ClassType};
+use objc2_foundation::{NSError, NSString};
 
-    set_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT, SENTINEL_VALUE)
-        .map_err(|e| anyhow::anyhow!("Failed to store Touch ID sentinel: {}", e))
-}
-
-/// Authenticate the user.
+/// Authenticate the user via Touch ID (or system password as fallback).
 ///
-/// In production (signed app with entitlements), macOS will prompt Touch ID
-/// when accessing biometric-protected Keychain items.
-/// In development (unsigned), this verifies Keychain access works
-/// and serves as the authentication gate.
+/// This calls LAContext.evaluatePolicy:localizedReason:reply: which triggers
+/// the native macOS biometric prompt. If Touch ID is not available (e.g. no
+/// hardware, no enrolled fingers), macOS falls back to the system password.
 pub fn authenticate(reason: &str) -> Result<()> {
-    // Ensure sentinel exists
-    ensure_sentinel().context("Failed to set up authentication sentinel")?;
+    unsafe {
+        // Create LAContext
+        let cls = objc2::runtime::AnyClass::get(c"LAContext")
+            .ok_or_else(|| anyhow::anyhow!("LAContext class not found — LocalAuthentication framework not linked"))?;
+        let context: Retained<objc2::runtime::AnyObject> = msg_send_id![cls, new];
 
-    // Read the sentinel — in signed builds with biometric entitlements,
-    // this triggers the Touch ID / password prompt.
-    match get_generic_password(SERVICE_NAME, TOUCHID_SENTINEL_ACCOUNT) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(anyhow::anyhow!("Authentication failed: {}", e)),
+        // Check if biometric policy can be evaluated
+        let mut error: *mut NSError = std::ptr::null_mut();
+        let policy: i64 = 1; // LAPolicyDeviceOwnerAuthentication (biometric + password fallback)
+        let can_evaluate: Bool = msg_send![&context, canEvaluatePolicy: policy, error: &mut error];
+
+        if !can_evaluate.as_bool() {
+            let desc = if !error.is_null() {
+                let err = &*error;
+                let desc: Retained<NSString> = msg_send_id![err, localizedDescription];
+                desc.to_string()
+            } else {
+                "Autenticazione biometrica non disponibile".to_string()
+            };
+            bail!("Autenticazione non disponibile: {}", desc);
+        }
+
+        // Evaluate policy — this triggers the Touch ID / password prompt
+        let reason_ns = NSString::from_str(reason);
+        let pair = Arc::new((Mutex::new(None::<Result<(), String>>), Condvar::new()));
+        let pair_clone = pair.clone();
+
+        let block = block2::RcBlock::new(move |success: Bool, err: *mut NSError| {
+            let result = if success.as_bool() {
+                Ok(())
+            } else {
+                let msg = if !err.is_null() {
+                    let err = &*err;
+                    let desc: Retained<NSString> = msg_send_id![err, localizedDescription];
+                    desc.to_string()
+                } else {
+                    "Autenticazione rifiutata".to_string()
+                };
+                Err(msg)
+            };
+            let (lock, cvar) = &*pair_clone;
+            *lock.lock().unwrap() = Some(result);
+            cvar.notify_one();
+        });
+
+        let _: () = msg_send![&context, evaluatePolicy: policy, localizedReason: &*reason_ns, reply: &*block];
+
+        // Wait for the callback
+        let (lock, cvar) = &*pair;
+        let mut result = lock.lock().unwrap();
+        while result.is_none() {
+            result = cvar.wait(result).unwrap();
+        }
+
+        match result.take().unwrap() {
+            Ok(()) => Ok(()),
+            Err(msg) => bail!("Autenticazione fallita: {}", msg),
+        }
     }
 }

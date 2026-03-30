@@ -10,7 +10,6 @@ import { GlowText } from '../../ui/GlowText';
 import { DemonForm } from '../../ritual/DemonForm';
 import { GenesisVoid } from '../../ritual/GenesisVoid';
 import { Banishment } from '../../ritual/transitions/Banishment';
-import { ambientSound } from '../../audio/Ambient';
 import { voiceSynth } from '../../audio/VoiceSynth';
 
 interface VoiceParams {
@@ -37,6 +36,15 @@ export function Circle() {
   const { session, sendMessage, endSession } = useSession();
   const [manifest, setManifest] = useState<DemonManifest | null>(null);
   const [dismissing, setDismissing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Poll voiceSynth.isSpeaking() to track speaking state
+  useEffect(() => {
+    const id = setInterval(() => {
+      setIsSpeaking(voiceSynth.isSpeaking());
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
 
   const handleEndSession = () => {
     if (!manifest) {
@@ -69,14 +77,6 @@ export function Circle() {
     }
   }, [session.demonName, manifest]);
 
-  // Start/stop ambient sound with session
-  useEffect(() => {
-    if (session.demonName) {
-      ambientSound.start('evocation');
-    }
-    return () => { ambientSound.stop(); };
-  }, [session.demonName]);
-
   // Voice synthesis on new demon turns
   const lastTurnCount = useRef(0);
   useEffect(() => {
@@ -84,6 +84,7 @@ export function Circle() {
     if (turns.length > lastTurnCount.current) {
       const lastTurn = turns[turns.length - 1];
       if (lastTurn.role === 'demon' && manifest?.voice && !lastTurn.content.startsWith('[ERRORE')) {
+        console.log('[VoiceSynth] text length:', lastTurn.content.length, 'preview:', lastTurn.content.substring(0, 100));
         voiceSynth.speak(lastTurn.content, manifest.voice);
       }
     }
@@ -176,6 +177,8 @@ export function Circle() {
               <DemonForm
                 manifest={manifest}
                 visualState={session.currentVisualState}
+                waiting={session.streaming}
+                speaking={isSpeaking}
               />
             )}
           </div>
@@ -223,10 +226,9 @@ export function Circle() {
           </button>
         </div>
 
-        {/* Conversation — overlaid on demon, bottom portion */}
-        <div style={{ flex: 1 }} />
+        {/* Conversation — overlaid on demon, full height */}
         <div style={{
-          height: '40%',
+          flex: 1,
           overflow: 'hidden',
         }}>
           <Terminal

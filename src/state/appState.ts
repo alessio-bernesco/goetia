@@ -8,6 +8,7 @@ export type AuthStatus = 'unauthenticated' | 'authenticated' | 'error';
 
 export interface DemonEntry {
   name: string;
+  rank: string;
 }
 
 export interface DemonVisualState {

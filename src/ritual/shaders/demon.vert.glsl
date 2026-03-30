@@ -4,6 +4,8 @@ uniform float uTime;
 uniform float uPulseFrequency;
 uniform float uNoiseAmplitude;
 uniform float uScaleFactor;
+uniform float uSpeaking;
+uniform float uWaiting;
 
 varying vec3 vNormal;
 varying vec3 vPosition;
@@ -40,7 +42,19 @@ void main() {
   vDisplacement = n;
 
   vec3 displaced = position + normal * n;
-  displaced *= pulse * uScaleFactor;
+
+  // Speaking perturbation — per-axis displacement for visibility on low-poly
+  float sn = noise(position * 8.0 + uTime * 4.0) - 0.5;
+  vec3 speakOffset = vec3(
+    sin(uTime * 18.0 + position.y * 12.0),
+    sin(uTime * 23.0 + position.z * 9.0),
+    sin(uTime * 31.0 + position.x * 15.0)
+  ) * 0.12 + normal * sn * 0.1;
+  displaced += speakOffset * uSpeaking;
+
+  // Waiting breathing — slow expansion/contraction
+  float breath = sin(uTime * 5.0) * 0.06 * uWaiting;
+  displaced *= pulse * uScaleFactor * (1.0 + breath);
 
   vPosition = displaced;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);

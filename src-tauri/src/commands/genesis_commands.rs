@@ -6,16 +6,16 @@ use crate::auth::keychain;
 use crate::commands::AppState;
 use crate::demons::genesis::{self, GenesisSession};
 
-/// Start a genesis session (demon creation).
+/// Start a genesis session (demon creation) with the given rank.
 #[tauri::command]
-pub async fn start_genesis(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn start_genesis(state: State<'_, AppState>, rank: String) -> Result<(), String> {
     let master_key = state.get_master_key()?;
     let api_key = keychain::get_api_key()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "No API key configured".to_string())?;
 
-    let model = state.get_model()?;
-    let session = GenesisSession::new(&master_key, api_key, model).map_err(|e| e.to_string())?;
+    let model = crate::storage::demons::rank_to_model(&rank).to_string();
+    let session = GenesisSession::new(&master_key, api_key, model, rank).map_err(|e| e.to_string())?;
 
     let mut lock = state.genesis_session.lock().await;
     if lock.is_some() {
@@ -46,10 +46,17 @@ pub async fn accept_demon(
     genesis_response: String,
 ) -> Result<String, String> {
     let master_key = state.get_master_key()?;
-    let output =
+    let mut output =
         GenesisSession::parse_genesis_output(&genesis_response).map_err(|e| e.to_string())?;
-    let name = output.name.clone();
 
+    // Inject rank from genesis session (mago's choice, not model's)
+    let lock = state.genesis_session.lock().await;
+    if let Some(session) = lock.as_ref() {
+        output.manifest.rank = session.rank().to_string();
+    }
+    drop(lock);
+
+    let name = output.name.clone();
     genesis::accept_demon(&master_key, &output).map_err(|e| e.to_string())?;
 
     // Clear genesis session
