@@ -14,6 +14,7 @@ interface TerminalProps {
   onSubmit?: (text: string) => void;
   inputDisabled?: boolean;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 const roleColors: Record<string, string> = {
@@ -30,7 +31,7 @@ const rolePrefix: Record<string, string> = {
   system: '// ',
 };
 
-export function Terminal({ lines, streamingText, onSubmit, inputDisabled, placeholder }: TerminalProps) {
+export function Terminal({ lines, streamingText, onSubmit, inputDisabled, placeholder, disabled }: TerminalProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -61,6 +62,8 @@ export function Terminal({ lines, streamingText, onSubmit, inputDisabled, placeh
       lineHeight: '1.6',
       color: '#999',
       animation: 'breathe 3s ease-in-out infinite',
+      opacity: disabled ? 0.3 : 1,
+      transition: 'opacity 0.5s ease',
     }}>
       <div ref={scrollRef} style={{
         flex: 1,
@@ -99,8 +102,8 @@ export function Terminal({ lines, streamingText, onSubmit, inputDisabled, placeh
           <span style={{ color: '#777', opacity: 0.7, paddingTop: '2px' }}>&gt;</span>
           <textarea
             ref={inputRef}
-            disabled={inputDisabled}
-            placeholder={placeholder || ''}
+            disabled={disabled || inputDisabled}
+            placeholder={disabled ? 'evocazione in corso...' : (placeholder || '')}
             onKeyDown={handleKeyDown}
             rows={5}
             style={{

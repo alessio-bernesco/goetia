@@ -5,12 +5,13 @@ import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 
 interface SceneProps {
-  children?: (scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void;
+  children?: (scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer) => void;
   onFrame?: (time: number, delta: number) => void;
   transparent?: boolean;
+  renderOverride?: (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => void;
 }
 
-export function Scene({ children, onFrame, transparent = false }: SceneProps) {
+export function Scene({ children, onFrame, transparent = false, renderOverride }: SceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -18,9 +19,11 @@ export function Scene({ children, onFrame, transparent = false }: SceneProps) {
   const frameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const onFrameRef = useRef(onFrame);
+  const renderOverrideRef = useRef(renderOverride);
 
-  // Keep ref in sync so the animation loop always calls the latest callback
+  // Keep refs in sync so the animation loop always calls the latest callbacks
   useEffect(() => { onFrameRef.current = onFrame; }, [onFrame]);
+  useEffect(() => { renderOverrideRef.current = renderOverride; }, [renderOverride]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -59,7 +62,7 @@ export function Scene({ children, onFrame, transparent = false }: SceneProps) {
     rendererRef.current = renderer;
 
     // Setup callback
-    children?.(scene, camera);
+    children?.(scene, camera, renderer);
 
     // Animation loop
     const animate = (time: number) => {
@@ -67,7 +70,11 @@ export function Scene({ children, onFrame, transparent = false }: SceneProps) {
       lastTimeRef.current = time;
 
       onFrameRef.current?.(time / 1000, delta);
-      renderer.render(scene, camera);
+      if (renderOverrideRef.current) {
+        renderOverrideRef.current(renderer, scene, camera);
+      } else {
+        renderer.render(scene, camera);
+      }
       frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);

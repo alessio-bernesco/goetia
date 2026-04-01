@@ -8,7 +8,7 @@ import { useAppState } from '../../state/appState';
 import { useSession } from '../../hooks/useSession';
 import { Terminal } from '../../ui/Terminal';
 import { GlowText } from '../../ui/GlowText';
-import { Banishment } from '../../ritual/transitions/Banishment';
+import { Banishment } from '../../ritual/transitions/BanishmentLegacy';
 
 interface DemonDetail {
   name: string;
@@ -28,6 +28,7 @@ export function Seals() {
     try {
       const data = await invoke<DemonDetail>('get_demon', { name });
       setSelected(data);
+      setBanishPhase('idle');
     } catch (e) {
       console.error('Failed to load demon:', e);
     }
@@ -83,6 +84,7 @@ export function Seals() {
             dispatch({ type: 'REMOVE_DEMON', name: banishing.name });
             setBanishing(null);
             setSelected(null);
+            setBanishPhase('idle');
           }}
         />
       </div>

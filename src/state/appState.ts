@@ -53,7 +53,7 @@ export const initialAppState: AppState = {
   hasApiKey: false,
   hasGrimoire: false,
   demons: [],
-  currentPlace: 'seals',
+  currentPlace: 'circle',
   activeDemon: null,
   sessionActive: false,
   genesisActive: false,

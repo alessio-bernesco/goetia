@@ -1,38 +1,56 @@
-// Banishment — dissolves/fragments the demon form before disappearing
-// Vertices scatter outward, opacity fades, form disintegrates
+// Banishment — hook that orchestrates the banishment (dismissal) sequence
+// Symmetric inverse of evocation: dissolution → return to galaxies → closure
 
-import { useRef } from 'react';
-import * as THREE from 'three';
-import { Scene } from '../Scene';
+import { useRef, useEffect } from 'react';
+import {
+  type RitualModulation,
+  type BanishmentParams,
+  getBanishmentParams,
+} from '../RitualConfig';
+import { ritualDrone } from '../../audio/RitualDrone';
+import type { DemonManifest } from '../types';
+import { isComposite } from '../types';
 import { createGeometry, type GeometryType } from '../geometries';
 
-interface BanishmentProps {
-  geometry: string;
-  scale: number;
-  color: string;
-  duration?: number;
-  onComplete?: () => void;
+export type BanishmentPhase = 'idle' | 'dissolution' | 'return' | 'closure' | 'complete';
+
+export interface UseBanishmentResult {
+  ritualProps: RitualModulation | undefined;
+  phase: BanishmentPhase;
+  progress: number;
 }
 
-// Sample points on a geometry surface for the dissolution effect
-function samplePoints(geo: THREE.BufferGeometry, count: number): Float32Array {
-  const posAttr = geo.attributes.position;
-  const vertexCount = posAttr.count;
+interface BanishmentState {
+  startTime: number;
+  phase: BanishmentPhase;
+  progress: number;
+  params: BanishmentParams;
+  glowColor: string;
+  ritualProps: RitualModulation;
+  droneStarted: boolean;
+  // Demon form positions for dissolution particles
+  demonPositions: Float32Array;
+}
 
-  if (vertexCount >= count) {
-    // Enough vertices — use them directly
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const idx = i % vertexCount;
-      positions[i * 3] = posAttr.getX(idx);
-      positions[i * 3 + 1] = posAttr.getY(idx);
-      positions[i * 3 + 2] = posAttr.getZ(idx);
-    }
-    return positions;
+// Sample points from the demon's geometry for dissolution
+function sampleDemonPositions(manifest: DemonManifest, count: number): Float32Array {
+  const geo = manifest.geometry;
+  let shape: string;
+  let scale: number;
+
+  if (isComposite(geo)) {
+    shape = geo.bodies[0].shape;
+    scale = geo.bodies[0].scale * manifest.scale;
+  } else {
+    shape = geo.type;
+    scale = manifest.scale;
   }
 
-  // Not enough vertices — interpolate between existing ones with jitter
+  const geometry = createGeometry(shape as GeometryType, scale);
+  const posAttr = geometry.attributes.position;
+  const vertexCount = posAttr.count;
   const positions = new Float32Array(count * 3);
+
   for (let i = 0; i < count; i++) {
     const a = Math.floor(Math.random() * vertexCount);
     const b = Math.floor(Math.random() * vertexCount);
@@ -41,116 +59,223 @@ function samplePoints(geo: THREE.BufferGeometry, count: number): Float32Array {
     positions[i * 3 + 1] = posAttr.getY(a) * (1 - t) + posAttr.getY(b) * t + (Math.random() - 0.5) * 0.05;
     positions[i * 3 + 2] = posAttr.getZ(a) * (1 - t) + posAttr.getZ(b) * t + (Math.random() - 0.5) * 0.05;
   }
+
+  geometry.dispose();
   return positions;
 }
 
-export function Banishment({
-  geometry,
-  scale,
-  color,
-  duration = 3,
-  onComplete,
-}: BanishmentProps) {
-  const stateRef = useRef<{
-    points: THREE.Points;
-    basePositions: Float32Array;
-    velocities: Float32Array;
-    baseColor: THREE.Color;
-    startTime: number;
-    completed: boolean;
-  } | null>(null);
+export function useBanishment(
+  active: boolean,
+  rank: string,
+  manifest: DemonManifest | null,
+  onComplete: () => void,
+  ritualRef?: React.MutableRefObject<RitualModulation | undefined>,
+): UseBanishmentResult {
+  const stateRef = useRef<BanishmentState | null>(null);
+  const resultRef = useRef<UseBanishmentResult>({
+    ritualProps: undefined,
+    phase: 'idle',
+    progress: 0,
+  });
+  const frameRef = useRef<number>(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const ritualRefRef = useRef(ritualRef);
+  ritualRefRef.current = ritualRef;
 
-  const setup = (scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
-    camera.position.set(0, 0, 4);
-
-    const geo = createGeometry(geometry as GeometryType, scale);
-    const POINT_COUNT = 3000;
-    const basePositions = samplePoints(geo, POINT_COUNT);
-
-    const velocities = new Float32Array(POINT_COUNT * 3);
-    for (let i = 0; i < POINT_COUNT; i++) {
-      const nx = basePositions[i * 3];
-      const ny = basePositions[i * 3 + 1];
-      const nz = basePositions[i * 3 + 2];
-      const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
-      const speed = 1.5 + Math.random() * 3;
-      velocities[i * 3] = (nx / len) * speed + (Math.random() - 0.5) * 2;
-      velocities[i * 3 + 1] = (ny / len) * speed + (Math.random() - 0.5) * 2;
-      velocities[i * 3 + 2] = (nz / len) * speed + (Math.random() - 0.5) * 2;
+  useEffect(() => {
+    if (!active || !manifest) {
+      if (stateRef.current) {
+        ritualDrone.stop();
+        stateRef.current = null;
+        resultRef.current = { ritualProps: undefined, phase: 'idle', progress: 0 };
+        if (ritualRefRef.current) ritualRefRef.current.current = undefined;
+      }
+      return;
     }
 
-    const pointGeo = new THREE.BufferGeometry();
-    pointGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(basePositions), 3));
-
-    const baseColor = new THREE.Color(color);
-    // Ensure minimum brightness — very dark demons are invisible with additive blending
-    const hsl = { h: 0, s: 0, l: 0 };
-    baseColor.getHSL(hsl);
-    if (hsl.l < 0.3) {
-      baseColor.setHSL(hsl.h, Math.max(hsl.s, 0.5), 0.4);
-    }
-    baseColor.multiplyScalar(2.5);
-    const mat = new THREE.PointsMaterial({
-      color: baseColor,
-      size: 0.08,
-      transparent: true,
-      opacity: 1,
-      sizeAttenuation: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-
-    const points = new THREE.Points(pointGeo, mat);
-    scene.add(points);
+    const params = getBanishmentParams(rank);
+    const glowColor = manifest.glow.color || '#ff4444';
+    const demonPositions = sampleDemonPositions(manifest, params.particleCount);
 
     stateRef.current = {
-      points,
-      basePositions,
-      velocities,
-      baseColor,
       startTime: -1,
-      completed: false,
+      phase: 'dissolution',
+      progress: 0,
+      params,
+      glowColor,
+      ritualProps: {},
+      droneStarted: false,
+      demonPositions,
     };
+
+    const tick = (time: number) => {
+      const s = stateRef.current;
+      if (!s) return;
+
+      const t = time / 1000;
+
+      if (s.startTime < 0) s.startTime = t;
+      const elapsed = t - s.startTime;
+      const duration = s.params.duration;
+      s.progress = Math.min(elapsed / duration, 1);
+
+      if (!s.droneStarted) {
+        s.droneStarted = true;
+        ritualDrone.startBanishment(rank, s.glowColor);
+      }
+
+      const { phases } = s.params;
+      const dissolutionEnd = phases.dissolution;
+      const returnEnd = dissolutionEnd + phases.return;
+
+      if (s.progress < dissolutionEnd) {
+        s.phase = 'dissolution';
+        composeDissolution(s, s.progress / dissolutionEnd);
+      } else if (s.progress < returnEnd) {
+        s.phase = 'return';
+        const phaseProgress = (s.progress - dissolutionEnd) / phases.return;
+        composeReturn(s, phaseProgress);
+      } else if (s.progress < 1) {
+        s.phase = 'closure';
+        const phaseProgress = (s.progress - returnEnd) / phases.closure;
+        composeClosure(s, phaseProgress);
+      }
+
+      const props = { ...s.ritualProps };
+      resultRef.current = {
+        ritualProps: props,
+        phase: s.phase,
+        progress: s.progress,
+      };
+      if (ritualRefRef.current) ritualRefRef.current.current = props;
+
+      if (s.progress >= 1) {
+        s.phase = 'complete';
+        resultRef.current = { ritualProps: undefined, phase: 'complete', progress: 1 };
+        if (ritualRefRef.current) ritualRefRef.current.current = undefined;
+        stateRef.current = null;
+        onCompleteRef.current();
+        return;
+      }
+
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frameRef.current);
+      ritualDrone.stop();
+      stateRef.current = null;
+    };
+  }, [active, rank, manifest]);
+
+  return resultRef.current;
+}
+
+// ─── Phase composers ──────────────────────────────────────────────────────
+
+function composeDissolution(s: BanishmentState, phaseProgress: number) {
+  const p = s.params;
+
+  // Flash at the start (masks DemonForm unmount)
+  const flashCurve = phaseProgress < 0.4
+    ? phaseProgress / 0.4
+    : Math.max(0, 1 - (phaseProgress - 0.4) / 0.6);
+
+  s.ritualProps = {
+    flash: p.flashIntensity > 0 ? {
+      intensity: p.flashIntensity * flashCurve,
+      color: s.glowColor,
+    } : undefined,
+    // Restitution starts immediately — particles at demon position, heading outward
+    restitution: {
+      count: p.particleCount,
+      origin: [0, 0, 0],
+      progress: phaseProgress * 0.3, // slow start — prince resistance
+      trajectoryType: p.trajectoryType,
+    },
   };
 
-  const onFrame = (time: number) => {
-    const state = stateRef.current;
-    if (!state || state.completed) return;
+  // Shockwave (contracting) for prince
+  if (p.hasShockwave) {
+    const radius = 2 * (1 - phaseProgress);
+    s.ritualProps.shockwave = {
+      radius,
+      intensity: 0.6 * (1 - phaseProgress),
+      expanding: false,
+    };
+  }
 
-    if (state.startTime < 0) state.startTime = time;
-    const elapsed = time - state.startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    const t = progress * progress;
+  // Color shift present for prince
+  if (p.hasColorShift) {
+    s.ritualProps.colorShift = {
+      target: s.glowColor,
+      intensity: 0.6 * (1 - phaseProgress * 0.3),
+    };
+  }
+}
 
-    const positions = state.points.geometry.attributes.position;
-    const count = positions.count;
+function composeReturn(s: BanishmentState, phaseProgress: number) {
+  const p = s.params;
 
-    for (let i = 0; i < count * 3; i++) {
-      (positions.array as Float32Array)[i] =
-        state.basePositions[i] + state.velocities[i] * t;
-    }
-    positions.needsUpdate = true;
+  // Restitution progress maps through the return phase
+  // princeResistance: slow start (particles hesitate)
+  let restitutionProgress: number;
+  if (p.princeResistance) {
+    // Ease-in: slow at start, fast at end
+    restitutionProgress = 0.3 + phaseProgress * phaseProgress * 0.7;
+  } else {
+    restitutionProgress = 0.3 + phaseProgress * 0.7;
+  }
 
-    const mat = state.points.material as THREE.PointsMaterial;
-    // Stay bright longer, then fade in the last 40%
-    const fadeProg = Math.max(0, (progress - 0.6) / 0.4);
-    mat.opacity = 1 - fadeProg;
-    mat.size = 0.08 * (1 + progress * 0.5) * (1 - fadeProg * 0.5);
-
-    // Keep color vivid — only desaturate slightly at the end
-    mat.color.setRGB(
-      state.baseColor.r * (1 - fadeProg * 0.5),
-      state.baseColor.g * (1 - fadeProg * 0.5),
-      state.baseColor.b * (1 - fadeProg * 0.5),
-    );
-
-    state.points.rotation.y += 0.01 + progress * 0.05;
-
-    if (progress >= 1 && !state.completed) {
-      state.completed = true;
-      onComplete?.();
-    }
+  s.ritualProps = {
+    restitution: {
+      count: p.particleCount,
+      origin: [0, 0, 0],
+      progress: Math.min(restitutionProgress, 1),
+      trajectoryType: p.trajectoryType,
+    },
   };
 
-  return <Scene children={setup} onFrame={onFrame} transparent />;
+  // Return waves: as particles reach clouds, clouds flare
+  if (p.hasReturnWaves) {
+    s.ritualProps.waves = {
+      origin: [0, 0, 0],
+      speed: 6,
+      intensity: 0.3 * phaseProgress,
+      frequency: 0.5 + phaseProgress,
+    };
+  }
+
+  // Color shift fading for prince
+  if (p.hasColorShift) {
+    s.ritualProps.colorShift = {
+      target: s.glowColor,
+      intensity: 0.5 * (1 - phaseProgress),
+    };
+  }
+}
+
+function composeClosure(s: BanishmentState, phaseProgress: number) {
+  const p = s.params;
+
+  s.ritualProps = {
+    // Return waves from edges to center
+    waves: p.hasReturnWaves ? {
+      origin: [0, 0, 0],
+      speed: 4,
+      intensity: 0.2 * (1 - phaseProgress),
+      frequency: 0.3,
+    } : undefined,
+  };
+
+  // Final color shift reset
+  if (p.hasColorShift && phaseProgress < 0.5) {
+    s.ritualProps.colorShift = {
+      target: s.glowColor,
+      intensity: 0.1 * (1 - phaseProgress * 2),
+    };
+  }
 }
