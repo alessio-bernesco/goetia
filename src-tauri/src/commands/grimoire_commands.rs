@@ -5,11 +5,13 @@ use tauri::State;
 
 use crate::commands::AppState;
 use crate::storage;
+use crate::sync::trigger;
 
-/// Check if a grimoire exists in the data store.
+/// Check if a grimoire exists in the data store for the active temple.
 #[tauri::command]
-pub fn grimoire_exists() -> Result<bool, String> {
-    storage::grimoire_exists().map_err(|e| e.to_string())
+pub fn grimoire_exists(state: State<'_, AppState>) -> Result<bool, String> {
+    let temple_id = state.get_active_temple()?;
+    storage::grimoire_exists(&temple_id).map_err(|e| e.to_string())
 }
 
 /// Import/deploy a grimoire from 5 plaintext markdown sections.
@@ -24,11 +26,12 @@ pub struct GrimoireSections {
 }
 
 #[tauri::command]
-pub fn deploy_grimoire(
+pub async fn deploy_grimoire(
     state: State<'_, AppState>,
     sections: GrimoireSections,
 ) -> Result<(), String> {
     let master_key = state.get_master_key()?;
+    let temple_id = state.get_active_temple()?;
 
     let section_array: [(&str, &[u8]); 5] = [
         ("identity.md", sections.identity.as_bytes()),
@@ -38,10 +41,13 @@ pub fn deploy_grimoire(
         ("chronicles.md", sections.chronicles.as_bytes()),
     ];
 
-    storage::deploy_grimoire(&master_key, &section_array).map_err(|e| e.to_string())?;
+    storage::deploy_grimoire(&master_key, &temple_id, &section_array).map_err(|e| e.to_string())?;
 
-    // Ensure directories exist
-    storage::paths::ensure_dirs().map_err(|e| e.to_string())?;
+    // Ensure temple directories exist
+    storage::paths::ensure_temple_dirs(&temple_id).map_err(|e| e.to_string())?;
+
+    // Sync grimoire to iCloud
+    trigger::sync_grimoire_to_icloud(&temple_id);
 
     Ok(())
 }
@@ -50,5 +56,6 @@ pub fn deploy_grimoire(
 #[tauri::command]
 pub fn validate_grimoire(state: State<'_, AppState>) -> Result<bool, String> {
     let master_key = state.get_master_key()?;
-    storage::validate_grimoire(&master_key).map_err(|e| e.to_string())
+    let temple_id = state.get_active_temple()?;
+    storage::validate_grimoire(&master_key, &temple_id).map_err(|e| e.to_string())
 }

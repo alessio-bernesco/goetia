@@ -15,8 +15,9 @@ pub const CLAUDE_HAIKU: &str = "claude-haiku-4-5-20251001";
 #[allow(dead_code)]
 pub const CLAUDE_OPUS_MODEL: &str = CLAUDE_OPUS;
 
-/// API endpoint
+/// API endpoints
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -124,10 +125,34 @@ impl AnthropicClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
+            if status.as_u16() == 401 {
+                anyhow::bail!("AUTH_ERROR: API key non valida o revocata (HTTP 401): {}", body);
+            }
             anyhow::bail!("Anthropic API error (HTTP {}): {}", status, body);
         }
 
         Ok(super::streaming::sse_stream(response))
+    }
+}
+
+/// Validate an API key by calling GET /v1/models (free, no tokens consumed).
+/// Returns `Ok(true)` if 200, `Ok(false)` if 401, `Err` for anything else.
+pub async fn validate_key(api_key: &str) -> anyhow::Result<bool> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get(MODELS_URL)
+        .header("x-api-key", api_key)
+        .header("anthropic-version", "2023-06-01")
+        .send()
+        .await?;
+
+    match response.status().as_u16() {
+        200 => Ok(true),
+        401 => Ok(false),
+        status => {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Unexpected response from Anthropic (HTTP {}): {}", status, body)
+        }
     }
 }
 

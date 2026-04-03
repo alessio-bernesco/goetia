@@ -1,6 +1,6 @@
 // Demon genesis — model-driven creation protocol
 //
-// Genesis is a conversation between the user and Claude Opus in "generative entity" mode.
+// Genesis is a conversation between the user and Claude in "generative entity" mode.
 // The model interviews the user, then produces a seal.md and manifest.json.
 // The user accepts or rejects; if accepted, the demon is persisted encrypted.
 
@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::api::client::{AnthropicClient, Message, MessageRequest, SystemBlock};
 use crate::api::streaming::{SSEEvent, StreamAccumulator};
 use crate::crypto::grimoire_hash;
+use crate::demons::manifest_generator;
 use crate::storage;
-use crate::storage::demons::DemonManifest;
+use crate::storage::genesis_registry;
 
 use futures::StreamExt;
 use tokio::pin;
@@ -23,21 +24,21 @@ pub struct GenesisSession {
     messages: Vec<Message>,
     model: String,
     rank: String,
+    temple_id: String,
 }
 
-/// Parsed genesis output from the model.
+/// Parsed genesis output from the model — only name and seal.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenesisOutput {
     pub name: String,
     pub seal: String,
-    pub manifest: DemonManifest,
 }
 
 impl GenesisSession {
     /// Start a new genesis session.
     /// Loads the grimoire and builds the genesis system prompt.
-    pub fn new(master_key: &[u8; 32], api_key: String, model: String, rank: String) -> Result<Self> {
-        let system_prompt = super::context::build_genesis_prompt(master_key)?;
+    pub fn new(master_key: &[u8; 32], api_key: String, model: String, rank: String, temple_id: String) -> Result<Self> {
+        let system_prompt = super::context::build_genesis_prompt(master_key, &temple_id)?;
         let client = AnthropicClient::new(api_key);
         Ok(Self {
             client,
@@ -45,6 +46,7 @@ impl GenesisSession {
             messages: Vec::new(),
             model,
             rank,
+            temple_id,
         })
     }
 
@@ -56,6 +58,11 @@ impl GenesisSession {
     /// Get the model used by this genesis session.
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Get the temple ID for this genesis session.
+    pub fn temple_id(&self) -> &str {
+        &self.temple_id
     }
 
     /// Send a message in the genesis conversation and collect the full response.
@@ -105,21 +112,34 @@ impl GenesisSession {
     }
 }
 
-/// Accept a demon from genesis: encrypt and persist seal, manifest, and empty essence.
+/// Accept a demon from genesis: generate manifest, encrypt and persist seal + manifest + empty essence, update registry.
 pub fn accept_demon(
     master_key: &[u8; 32],
+    temple_id: &str,
+    rank: &str,
     output: &GenesisOutput,
 ) -> Result<()> {
-    let meta = storage::read_grimoire_meta(master_key)?;
+    let meta = storage::read_grimoire_meta(master_key, temple_id)?;
     let grimoire_hash = grimoire_hash::current_hash_bytes(&meta)?;
+
+    // Load registry for repulsion-aware generation
+    let registry = genesis_registry::read_registry(master_key, temple_id)?;
+
+    // Generate manifest from rank + registry
+    let manifest = manifest_generator::generate_manifest(rank, &registry);
 
     storage::create_demon(
         master_key,
         &grimoire_hash,
+        temple_id,
         &output.name,
         &output.seal,
-        &output.manifest,
+        &manifest,
     )?;
+
+    // Append to genesis registry
+    let entry = genesis_registry::entry_from_manifest(&output.name, rank, &manifest);
+    genesis_registry::append_entry(master_key, &grimoire_hash, temple_id, entry)?;
 
     Ok(())
 }

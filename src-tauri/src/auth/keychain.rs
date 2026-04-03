@@ -45,7 +45,6 @@ pub fn has_secret(account: &str) -> Result<bool> {
 
 /// Delete a secret from the Keychain.
 /// Silently succeeds if the item does not exist.
-#[allow(dead_code)]
 pub fn delete_secret(account: &str) -> Result<()> {
     match delete_generic_password(SERVICE_NAME, account) {
         Ok(()) => Ok(()),
@@ -95,4 +94,10 @@ pub fn get_api_key() -> Result<Option<String>> {
 /// Check if an Anthropic API key exists in the Keychain.
 pub fn has_api_key() -> Result<bool> {
     has_secret(API_KEY_ACCOUNT)
+}
+
+/// Delete the Anthropic API key from the Keychain.
+pub fn delete_api_key() -> Result<()> {
+    delete_secret(API_KEY_ACCOUNT)
+        .context("Failed to delete API key from Keychain")
 }

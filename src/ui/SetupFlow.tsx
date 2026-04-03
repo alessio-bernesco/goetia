@@ -1,4 +1,5 @@
-// SetupFlow — first launch: authenticate, import grimoire, insert API key
+// SetupFlow — first launch: authenticate, insert API key
+// Also used for grimoire-only deploy when entering a new temple
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -8,12 +9,12 @@ type SetupPhase = 'auth' | 'grimoire' | 'apikey' | 'complete';
 
 interface SetupFlowProps {
   hasApiKey: boolean;
-  hasGrimoire: boolean;
+  grimoireOnly?: boolean;
   onComplete: () => void;
 }
 
-export function SetupFlow({ hasApiKey, hasGrimoire, onComplete }: SetupFlowProps) {
-  const initialPhase: SetupPhase = 'auth';
+export function SetupFlow({ hasApiKey, grimoireOnly = false, onComplete }: SetupFlowProps) {
+  const initialPhase: SetupPhase = grimoireOnly ? 'grimoire' : 'auth';
   const [phase, setPhase] = useState<SetupPhase>(initialPhase);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,9 +30,7 @@ export function SetupFlow({ hasApiKey, hasGrimoire, onComplete }: SetupFlowProps
     setError(null);
     try {
       await invoke('authenticate');
-      if (!hasGrimoire) {
-        setPhase('grimoire');
-      } else if (!hasApiKey) {
+      if (!hasApiKey) {
         setPhase('apikey');
       } else {
         setPhase('complete');
@@ -42,7 +41,7 @@ export function SetupFlow({ hasApiKey, hasGrimoire, onComplete }: SetupFlowProps
     } finally {
       setLoading(false);
     }
-  }, [hasGrimoire, hasApiKey, onComplete]);
+  }, [hasApiKey, onComplete]);
 
   const handleGrimoireImport = useCallback(async () => {
     setLoading(true);
@@ -66,28 +65,30 @@ export function SetupFlow({ hasApiKey, hasGrimoire, onComplete }: SetupFlowProps
         },
       });
 
-      if (!hasApiKey) {
-        setPhase('apikey');
-      } else {
-        setPhase('complete');
-        onComplete();
-      }
+      setPhase('complete');
+      onComplete();
     } catch (e) {
       setError(typeof e === 'string' ? e : 'Import grimoire fallito');
     } finally {
       setLoading(false);
     }
-  }, [grimoireText, hasApiKey, onComplete]);
+  }, [grimoireText, onComplete]);
 
   const handleApiKey = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const valid = await invoke<boolean>('validate_api_key', { key: apiKey });
+      if (!valid) {
+        setError('API key non valida. Verifica e riprova.');
+        setLoading(false);
+        return;
+      }
       await invoke('store_api_key', { key: apiKey });
       setPhase('complete');
       onComplete();
     } catch (e) {
-      setError(typeof e === 'string' ? e : 'Salvataggio API key fallito');
+      setError(typeof e === 'string' ? e : 'Validazione API key fallita');
     } finally {
       setLoading(false);
     }
@@ -169,7 +170,7 @@ export function SetupFlow({ hasApiKey, hasGrimoire, onComplete }: SetupFlowProps
             }}
           />
           <button onClick={handleApiKey} disabled={loading || !apiKey.trim()} style={actionBtnStyle}>
-            {loading ? 'SALVATAGGIO...' : 'SALVA NEL KEYCHAIN'}
+            {loading ? 'VERIFICA IN CORSO...' : 'VERIFICA E SALVA'}
           </button>
         </>
       )}

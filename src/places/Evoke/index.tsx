@@ -12,7 +12,7 @@ import { Crystallization } from '../../ritual/transitions/Crystallization';
 type DemonRank = 'minor' | 'major' | 'prince';
 
 const RANKS: { id: DemonRank; label: string; description: string; color: string }[] = [
-  { id: 'minor', label: 'DEMONE MINORE', description: 'spirito servile, risposte rapide', color: '#555' },
+  { id: 'minor', label: 'DEMONE MINORE', description: 'spirito servile, risposte rapide', color: '#555555' },
   { id: 'major', label: 'DEMONE MAGGIORE', description: 'entità versatile, equilibrio tra potere e velocità', color: '#7a6a3a' },
   { id: 'prince', label: 'PRINCIPE', description: 'intelligenza suprema, profondità massima', color: '#8a3a5a' },
 ];
@@ -116,6 +116,7 @@ export function Evoke() {
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'border-color 0.3s',
+                  outline: 'none',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = r.color)}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = `${r.color}44`)}

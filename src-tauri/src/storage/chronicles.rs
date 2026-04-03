@@ -69,8 +69,8 @@ pub fn chronicle_filename_from(dt: &DateTime<Utc>) -> String {
 
 /// List all chronicle files for a demon, returning basic info without decrypting.
 /// Files are sorted by date (newest first).
-pub fn list_chronicles(demon_name: &str) -> Result<Vec<ChronicleEntry>> {
-    let dir = paths::demon_chronicles_dir(demon_name)?;
+pub fn list_chronicles(temple_id: &str, demon_name: &str) -> Result<Vec<ChronicleEntry>> {
+    let dir = paths::demon_chronicles_dir(temple_id, demon_name)?;
 
     if !dir.exists() {
         return Ok(Vec::new());
@@ -109,10 +109,11 @@ pub fn list_chronicles(demon_name: &str) -> Result<Vec<ChronicleEntry>> {
 pub fn write_chronicle(
     master_key: &[u8; 32],
     grimoire_hash: &[u8; 32],
+    temple_id: &str,
     demon_name: &str,
     chronicle: &Chronicle,
 ) -> Result<String> {
-    let dir = paths::demon_chronicles_dir(demon_name)?;
+    let dir = paths::demon_chronicles_dir(temple_id, demon_name)?;
     fs::create_dir_all(&dir)?;
 
     let filename = chronicle_filename_from(&chronicle.metadata.date);
@@ -130,10 +131,11 @@ pub fn write_chronicle(
 /// Read and decrypt a single chronicle by filename.
 pub fn read_chronicle(
     master_key: &[u8; 32],
+    temple_id: &str,
     demon_name: &str,
     filename: &str,
 ) -> Result<Chronicle> {
-    let dir = paths::demon_chronicles_dir(demon_name)?;
+    let dir = paths::demon_chronicles_dir(temple_id, demon_name)?;
     let path = dir.join(filename);
     let path_str = path.to_string_lossy().to_string();
 

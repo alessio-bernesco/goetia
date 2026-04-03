@@ -6,6 +6,7 @@ import { useAppState } from '../state/appState';
 import { useSessionState } from '../state/sessionState';
 import type { DemonVisualState } from '../state/appState';
 import { logPrompt } from '../ui/DebugPanel';
+import { isAuthError, requestAuthRecovery } from '../ui/AuthRecovery';
 
 interface MessageResult {
   text: string;
@@ -41,6 +42,9 @@ export function useSession() {
       }
     } catch (e) {
       const msg = typeof e === 'string' ? e : (e as Error).message;
+      if (isAuthError(msg)) {
+        requestAuthRecovery();
+      }
       sessionDispatch({
         type: 'ADD_DEMON_TURN',
         content: `[ERRORE: ${msg}]`,

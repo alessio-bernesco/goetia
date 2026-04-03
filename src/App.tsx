@@ -19,20 +19,32 @@ import {
 import { NavigationBar } from './ui/NavigationBar';
 import { SyncIndicator } from './ui/SyncIndicator';
 import { SetupFlow } from './ui/SetupFlow';
+import { TempleGate } from './ui/TempleGate';
 import { Circle } from './places/Circle';
 import { Evoke } from './places/Evoke';
 import { Chronicles } from './places/Chronicles';
 import { Seals } from './places/Seals';
 import { PlaceTransition } from './ritual/transitions/PlaceTransition';
 import { DebugPanel } from './ui/DebugPanel';
+import { AuthRecovery } from './ui/AuthRecovery';
 import { backgroundNoise } from './audio/BackgroundNoise';
 import { ambientEvents } from './audio/Ambient';
+
+interface TempleInfo {
+  id: string;
+  name: string;
+  created_at: string;
+  demon_count: number;
+}
+
+type AppPhase = 'setup' | 'temple-gate' | 'grimoire-deploy' | 'ready';
 
 function App() {
   const [state, dispatch] = useReducer(appReducer, initialAppState);
   const [session, sessionDispatch] = useReducer(sessionReducer, initialSessionState);
   const [genesis, genesisDispatch] = useReducer(genesisReducer, initialGenesisState);
-  const [ready, setReady] = useState(false);
+  const [phase, setPhase] = useState<AppPhase>('setup');
+  const [temples, setTemples] = useState<TempleInfo[]>([]);
 
   // Check initial state on mount
   useEffect(() => {
@@ -43,18 +55,55 @@ function App() {
       } catch {
         // Not authenticated yet — expected
       }
-      try {
-        const hasGrimoire = await invoke<boolean>('grimoire_exists');
-        dispatch({ type: 'SET_HAS_GRIMOIRE', value: hasGrimoire });
-      } catch {
-        // Expected before auth
-      }
     })();
   }, []);
 
+  // After auth + API key setup, initialize temples and go to temple gate
   const handleSetupComplete = useCallback(async () => {
     dispatch({ type: 'SET_AUTH', status: 'authenticated' });
     dispatch({ type: 'SET_HAS_API_KEY', value: true });
+
+    try {
+      const templeList = await invoke<TempleInfo[]>('init_temples');
+      setTemples(templeList);
+      setPhase('temple-gate');
+    } catch (e) {
+      console.error('Failed to init temples:', e);
+      setPhase('temple-gate');
+    }
+  }, []);
+
+  // Temple selected — check if grimoire exists, proceed accordingly
+  const handleTempleSelected = useCallback(async (_templeId: string, hasGrimoire: boolean) => {
+    if (!hasGrimoire) {
+      setPhase('grimoire-deploy');
+    } else {
+      await enterGrimoire();
+    }
+  }, []);
+
+  // Temple destroyed — remove from list
+  const handleTempleDestroyed = useCallback((templeId: string) => {
+    setTemples(prev => prev.filter(t => t.id !== templeId));
+  }, []);
+
+  // New temple created — add to list and auto-select
+  const handleTempleCreated = useCallback(async (temple: TempleInfo) => {
+    setTemples(prev => [...prev, temple]);
+    // Auto-select the new temple
+    await invoke('select_temple', { templeId: temple.id });
+    // New temple needs grimoire
+    setPhase('grimoire-deploy');
+  }, []);
+
+  // Grimoire deployed — enter the grimoire
+  const handleGrimoireDeployed = useCallback(async () => {
+    dispatch({ type: 'SET_HAS_GRIMOIRE', value: true });
+    await enterGrimoire();
+  }, []);
+
+  // Common entry point into the main app
+  const enterGrimoire = useCallback(async () => {
     dispatch({ type: 'SET_HAS_GRIMOIRE', value: true });
 
     // Start full soundscape
@@ -69,29 +118,56 @@ function App() {
       console.error('Failed to load demons:', e);
     }
 
-    setReady(true);
+    setPhase('ready');
   }, []);
 
   const handleNavigate = useCallback((place: Place) => {
     dispatch({ type: 'NAVIGATE', place });
   }, []);
 
-  // Setup flow (not authenticated)
-  if (!ready) {
-    return (
-      <AppContext.Provider value={{ state, dispatch }}>
-        <SessionContext.Provider value={{ state: session, dispatch: sessionDispatch }}>
-          <GenesisContext.Provider value={{ state: genesis, dispatch: genesisDispatch }}>
-            <div style={rootStyle}>
-              <SetupFlow
-                hasApiKey={state.hasApiKey}
-                hasGrimoire={state.hasGrimoire}
-                onComplete={handleSetupComplete}
-              />
-            </div>
-          </GenesisContext.Provider>
-        </SessionContext.Provider>
-      </AppContext.Provider>
+  // Providers wrapper
+  const providers = (children: React.ReactNode) => (
+    <AppContext.Provider value={{ state, dispatch }}>
+      <SessionContext.Provider value={{ state: session, dispatch: sessionDispatch }}>
+        <GenesisContext.Provider value={{ state: genesis, dispatch: genesisDispatch }}>
+          <div style={rootStyle}>
+            {children}
+          </div>
+        </GenesisContext.Provider>
+      </SessionContext.Provider>
+    </AppContext.Provider>
+  );
+
+  // Setup flow (auth + API key)
+  if (phase === 'setup') {
+    return providers(
+      <SetupFlow
+        hasApiKey={state.hasApiKey}
+        onComplete={handleSetupComplete}
+      />
+    );
+  }
+
+  // Temple gate
+  if (phase === 'temple-gate') {
+    return providers(
+      <TempleGate
+        temples={temples}
+        onSelect={handleTempleSelected}
+        onCreated={handleTempleCreated}
+        onDestroyed={handleTempleDestroyed}
+      />
+    );
+  }
+
+  // Grimoire deploy for new temple
+  if (phase === 'grimoire-deploy') {
+    return providers(
+      <SetupFlow
+        hasApiKey={true}
+        grimoireOnly
+        onComplete={handleGrimoireDeployed}
+      />
     );
   }
 
@@ -103,32 +179,27 @@ function App() {
     seals: Seals,
   }[state.currentPlace];
 
-  return (
-    <AppContext.Provider value={{ state, dispatch }}>
-      <SessionContext.Provider value={{ state: session, dispatch: sessionDispatch }}>
-        <GenesisContext.Provider value={{ state: genesis, dispatch: genesisDispatch }}>
-          <div style={rootStyle}>
-            <SyncIndicator status={state.syncStatus} />
-            <DebugPanel />
-            <div style={{
-              flex: 1,
-              overflow: 'hidden',
-              paddingBottom: '52px', // space for nav bar
-              position: 'relative',
-            }}>
-              <PlaceTransition placeKey={state.currentPlace}>
-                <PlaceComponent />
-              </PlaceTransition>
-            </div>
-            <NavigationBar
-              currentPlace={state.currentPlace}
-              onNavigate={handleNavigate}
-              sessionActive={state.sessionActive}
-            />
-          </div>
-        </GenesisContext.Provider>
-      </SessionContext.Provider>
-    </AppContext.Provider>
+  return providers(
+    <>
+      <SyncIndicator status={state.syncStatus} />
+      <DebugPanel />
+      <AuthRecovery />
+      <div style={{
+        flex: 1,
+        overflow: 'hidden',
+        paddingBottom: '52px',
+        position: 'relative',
+      }}>
+        <PlaceTransition placeKey={state.currentPlace}>
+          <PlaceComponent />
+        </PlaceTransition>
+      </div>
+      <NavigationBar
+        currentPlace={state.currentPlace}
+        onNavigate={handleNavigate}
+        sessionActive={state.sessionActive}
+      />
+    </>
   );
 }
 

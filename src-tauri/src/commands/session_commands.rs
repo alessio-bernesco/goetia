@@ -7,6 +7,7 @@ use crate::auth::keychain;
 use crate::commands::AppState;
 use crate::demons::evocation::EvocationSession;
 use crate::storage;
+use crate::sync::trigger;
 
 #[derive(Serialize)]
 pub struct MessageResult {
@@ -18,17 +19,18 @@ pub struct MessageResult {
 #[tauri::command]
 pub async fn start_session(state: State<'_, AppState>, demon_name: String) -> Result<(), String> {
     let master_key = state.get_master_key()?;
+    let temple_id = state.get_active_temple()?;
     let api_key = keychain::get_api_key()
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "No API key configured".to_string())?;
 
     // Read demon's rank from manifest to determine model
-    let manifest = crate::storage::demons::read_manifest(&master_key, &demon_name)
+    let manifest = crate::storage::demons::read_manifest(&master_key, &temple_id, &demon_name)
         .map_err(|e| e.to_string())?;
     let model = crate::storage::demons::rank_to_model(&manifest.rank).to_string();
 
     let session =
-        EvocationSession::new(&master_key, api_key, &demon_name, model).map_err(|e| e.to_string())?;
+        EvocationSession::new(&master_key, api_key, &demon_name, &temple_id, model).map_err(|e| e.to_string())?;
 
     let mut lock = state.evocation_session.lock().await;
     *lock = Some(session);
@@ -67,11 +69,20 @@ pub async fn end_session(state: State<'_, AppState>) -> Result<String, String> {
     let mut lock = state.evocation_session.lock().await;
     let session = lock.as_mut().ok_or("No active evocation session")?;
 
+    // Capture temple/demon info before ending session
+    let temple_id = session.temple_id().to_string();
+    let demon_name = session.demon_name.clone();
+
     let result = session.end_session().await;
 
     // Always clear session — even if end_session failed (API error, etc.)
     // The Drop impl on EvocationSession releases SESSION_ACTIVE
     *lock = None;
+
+    // Sync demon data to iCloud (essence + chronicle)
+    if result.is_ok() {
+        trigger::sync_session_to_icloud(&temple_id, &demon_name);
+    }
 
     result.map_err(|e| e.to_string())
 }
@@ -84,9 +95,10 @@ pub async fn inject_chronicle(
     filename: String,
 ) -> Result<(), String> {
     let master_key = state.get_master_key()?;
+    let temple_id = state.get_active_temple()?;
 
     let chronicle =
-        storage::read_chronicle(&master_key, &demon_name, &filename).map_err(|e| e.to_string())?;
+        storage::read_chronicle(&master_key, &temple_id, &demon_name, &filename).map_err(|e| e.to_string())?;
 
     let mut lock = state.evocation_session.lock().await;
     let session = lock.as_mut().ok_or("No active evocation session")?;

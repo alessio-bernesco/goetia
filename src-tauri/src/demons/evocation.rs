@@ -1,7 +1,7 @@
 // Demon evocation — session management
 //
 // An evocation session loads the demon's context, opens a streaming conversation
-// with Claude Opus, and manages the message flow. At session end, the demon
+// with Claude, and manages the message flow. At session end, the demon
 // updates its own essence and the system archives the chronicle.
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,6 +26,7 @@ pub struct EvocationSession {
     system_prompt: Vec<SystemBlock>,
     messages: Vec<Message>,
     pub demon_name: String,
+    temple_id: String,
     turns: Vec<ChronicleTurn>,
     session_start: chrono::DateTime<Utc>,
     master_key: [u8; 32],
@@ -41,13 +42,13 @@ pub struct DemonTurnResult {
 impl EvocationSession {
     /// Start a new evocation session with the named demon.
     /// Returns an error if another session is already active.
-    pub fn new(master_key: &[u8; 32], api_key: String, demon_name: &str, model: String) -> Result<Self> {
+    pub fn new(master_key: &[u8; 32], api_key: String, demon_name: &str, temple_id: &str, model: String) -> Result<Self> {
         // Enforce single-session constraint
         if SESSION_ACTIVE.swap(true, Ordering::SeqCst) {
             bail!("A session is already active. End the current session before evoking another demon.");
         }
 
-        let system_prompt = match super::context::build_evocation_prompt(master_key, demon_name) {
+        let system_prompt = match super::context::build_evocation_prompt(master_key, temple_id, demon_name) {
             Ok(prompt) => prompt,
             Err(e) => {
                 SESSION_ACTIVE.store(false, Ordering::SeqCst);
@@ -62,6 +63,7 @@ impl EvocationSession {
             system_prompt,
             messages: Vec::new(),
             demon_name: demon_name.to_string(),
+            temple_id: temple_id.to_string(),
             turns: Vec::new(),
             session_start: Utc::now(),
             master_key: *master_key,
@@ -72,6 +74,11 @@ impl EvocationSession {
     /// Get the model used by this evocation session.
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Get the temple ID for this evocation session.
+    pub fn temple_id(&self) -> &str {
+        &self.temple_id
     }
 
     /// Send a message to the demon and collect the streamed response.
@@ -182,9 +189,9 @@ impl EvocationSession {
         let closure = parse_closure_output(&response_text)?;
 
         // Update essence
-        let meta = storage::read_grimoire_meta(&self.master_key)?;
+        let meta = storage::read_grimoire_meta(&self.master_key, &self.temple_id)?;
         let grimoire_hash = grimoire_hash::current_hash_bytes(&meta)?;
-        storage::write_essence(&self.master_key, &grimoire_hash, &self.demon_name, &closure.essence)?;
+        storage::write_essence(&self.master_key, &grimoire_hash, &self.temple_id, &self.demon_name, &closure.essence)?;
 
         // Build and archive chronicle
         let session_end = Utc::now();
@@ -203,7 +210,7 @@ impl EvocationSession {
             conversation: self.turns.clone(),
         };
 
-        storage::write_chronicle(&self.master_key, &grimoire_hash, &self.demon_name, &chronicle)?;
+        storage::write_chronicle(&self.master_key, &grimoire_hash, &self.temple_id, &self.demon_name, &chronicle)?;
 
         // Release session lock
         SESSION_ACTIVE.store(false, Ordering::SeqCst);

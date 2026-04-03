@@ -4,60 +4,31 @@
 // seal, manifest, essence, and all chronicles.
 // Requires explicit Touch ID confirmation.
 
-use std::fs;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::auth::touchid;
-use crate::crypto::cipher;
-use crate::storage::paths;
+use crate::crypto::{grimoire_hash, wipe};
+use crate::storage::{self, genesis_registry, paths};
 
-/// Banish a demon: require Touch ID, secure-wipe all files, remove from local and iCloud.
-pub fn banish(demon_name: &str) -> Result<()> {
+/// Banish a demon: require Touch ID, remove from registry, secure-wipe all files, remove from local and iCloud.
+pub fn banish(master_key: &[u8; 32], temple_id: &str, demon_name: &str) -> Result<()> {
     // Require fresh Touch ID confirmation for this destructive operation
     touchid::authenticate("Conferma bandimento del demone")?;
 
+    // Remove from genesis registry BEFORE deleting files
+    if let Ok(meta) = storage::read_grimoire_meta(master_key, temple_id) {
+        if let Ok(hash) = grimoire_hash::current_hash_bytes(&meta) {
+            let _ = genesis_registry::remove_entry(master_key, &hash, temple_id, demon_name);
+        }
+    }
+
     // Wipe local files
-    wipe_demon_files(demon_name, &paths::demon_dir(demon_name)?)?;
+    wipe::wipe_directory(&paths::demon_dir(temple_id, demon_name)?)?;
 
     // Wipe iCloud files if available
-    let icloud_demons = paths::icloud_data_dir()?.join("demons");
-    let icloud_demon_dir = icloud_demons.join(demon_name);
-    if icloud_demon_dir.exists() {
-        wipe_demon_files(demon_name, &icloud_demon_dir)?;
-    }
-
-    Ok(())
-}
-
-/// Secure-wipe all files in a demon directory, then remove the directory.
-fn wipe_demon_files(_demon_name: &str, demon_dir: &std::path::Path) -> Result<()> {
-    if !demon_dir.exists() {
-        return Ok(());
-    }
-
-    // Walk the directory and wipe each file
-    wipe_directory_recursive(demon_dir)?;
-
-    // Remove the now-empty directory tree
-    fs::remove_dir_all(demon_dir)
-        .with_context(|| format!("Failed to remove demon directory: {}", demon_dir.display()))?;
-
-    Ok(())
-}
-
-/// Recursively wipe all files in a directory with random data before deletion.
-fn wipe_directory_recursive(dir: &std::path::Path) -> Result<()> {
-    let entries = fs::read_dir(dir)
-        .with_context(|| format!("Failed to read directory for wipe: {}", dir.display()))?;
-
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            wipe_directory_recursive(&path)?;
-        } else if path.is_file() {
-            cipher::secure_wipe(&path)?;
+    if let Ok(icloud_dir) = paths::icloud_demon_dir(temple_id, demon_name) {
+        if icloud_dir.exists() {
+            wipe::wipe_directory(&icloud_dir)?;
         }
     }
 

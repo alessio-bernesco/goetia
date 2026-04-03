@@ -1,7 +1,9 @@
-// Tauri commands: authenticate, store_api_key, has_api_key
+// Tauri commands: authenticate, store_api_key, has_api_key,
+// validate_api_key, delete_api_key, update_api_key, verify_stored_api_key
 
 use tauri::State;
 
+use crate::api::client;
 use crate::auth::{keychain, touchid};
 use crate::commands::AppState;
 
@@ -40,4 +42,40 @@ pub fn store_api_key(key: String) -> Result<(), String> {
 #[tauri::command]
 pub fn has_api_key() -> Result<bool, String> {
     keychain::has_api_key().map_err(|e| e.to_string())
+}
+
+/// Validate an API key against the Anthropic API (GET /v1/models, free).
+#[tauri::command]
+pub async fn validate_api_key(key: String) -> Result<bool, String> {
+    client::validate_key(&key).await.map_err(|e| e.to_string())
+}
+
+/// Delete the stored API key from Keychain.
+#[tauri::command]
+pub fn delete_api_key() -> Result<(), String> {
+    keychain::delete_api_key().map_err(|e| e.to_string())
+}
+
+/// Validate a new key, then atomically replace the stored key.
+/// If validation fails, the existing key remains untouched.
+#[tauri::command]
+pub async fn update_api_key(key: String) -> Result<(), String> {
+    let valid = client::validate_key(&key)
+        .await
+        .map_err(|e| e.to_string())?;
+    if !valid {
+        return Err("API key non valida".to_string());
+    }
+    // Delete old key (silently succeeds if none exists)
+    keychain::delete_api_key().map_err(|e| e.to_string())?;
+    keychain::store_api_key(&key).map_err(|e| e.to_string())
+}
+
+/// Verify the currently stored API key is still valid.
+#[tauri::command]
+pub async fn verify_stored_api_key() -> Result<bool, String> {
+    let key = keychain::get_api_key()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Nessuna API key configurata".to_string())?;
+    client::validate_key(&key).await.map_err(|e| e.to_string())
 }

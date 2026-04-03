@@ -18,6 +18,16 @@ pub fn run() {
             commands::auth_commands::authenticate,
             commands::auth_commands::store_api_key,
             commands::auth_commands::has_api_key,
+            commands::auth_commands::validate_api_key,
+            commands::auth_commands::delete_api_key,
+            commands::auth_commands::update_api_key,
+            commands::auth_commands::verify_stored_api_key,
+            // Temples
+            commands::temple_commands::init_temples,
+            commands::temple_commands::list_temples,
+            commands::temple_commands::select_temple,
+            commands::temple_commands::create_temple,
+            commands::temple_commands::destroy_temple,
             // Grimoire
             commands::grimoire_commands::grimoire_exists,
             commands::grimoire_commands::deploy_grimoire,
@@ -27,6 +37,7 @@ pub fn run() {
             commands::demon_commands::get_demon,
             commands::demon_commands::get_essence,
             commands::demon_commands::banish_demon,
+            commands::demon_commands::debug_generate_manifest,
             // Chronicles
             commands::chronicle_commands::list_chronicles,
             commands::chronicle_commands::get_chronicle,

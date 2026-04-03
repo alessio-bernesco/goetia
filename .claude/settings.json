@@ -1,4 +1,26 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(export PATH=$HOME/.cargo/bin:$PATH)",
+      "Bash(grep -r \"set_generic_password_options\\\\|AccessControlOptions\\\\|SecAccessControl\\\\|ProtectionMode\" ~/.cargo/registry/src/*/security-framework-*/src/passwords.rs)",
+      "Bash(cat ~/.cargo/registry/src/*/security-framework-3.7.0/src/passwords_options.rs)",
+      "Bash(grep -A 20 \"fn set_access_control\" ~/.cargo/registry/src/*/security-framework-3.7.0/src/passwords_options.rs)",
+      "Bash(find /Users/alessiobernescolavore/Workspace/goetia -type f -name *.glsl -o -name *.vert -o -name *.frag)",
+      "Bash(grep -r \"streaming\\\\|speaking\\\\|speech\" /Users/alessiobernescolavore/Workspace/goetia/src --include=*.tsx --include=*.ts)",
+      "Bash(cargo tauri:*)",
+      "Bash(grep -v \"^warning: \\\\`goetia\\\\`\")",
+      "Bash(while IFS= read -r line)",
+      "Bash(openspec --version)",
+      "Bash(find /Users/alessiobernescolavore/Workspace/goetia -path */grimoire/* -type f)",
+      "Bash(find /Users/alessiobernescolavore/Workspace/goetia -path */tests/* -name *.md -o -path */fixtures/* -name *.md)",
+      "Bash(grep -r \"JSON format\\\\|manifest.*json\\\\|json.*manifest\" /Users/alessiobernescolavore/Workspace/goetia/src-tauri/src --include=*.rs)",
+      "Bash(wc -l /Users/alessiobernescolavore/Workspace/goetia/src-tauri/src/commands/*.rs)",
+      "Bash(npm run:*)",
+      "Bash(ls /Users/alessiobernescolavore/Workspace/goetia/openspec/changes/temples-and-icloud-sync/specs/*/spec.md)",
+      "Read(//Users/alessiobernescolavore/Library/**)",
+      "Read(//Users/alessiobernescolavore/Workspace/goetia/$HOME/Library/Mobile Documents/**)"
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
   }

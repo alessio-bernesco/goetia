@@ -14,19 +14,19 @@ use crate::storage::paths;
 /// The 5 grimoire sections in canonical order.
 const SECTION_NAMES: [&str; 5] = ["identity.md", "laws.md", "genesis.md", "session.md", "chronicles.md"];
 
-/// Check whether a grimoire exists in the data store.
-pub fn grimoire_exists() -> Result<bool> {
-    let dir = paths::grimoire_dir()?;
+/// Check whether a grimoire exists in the data store for a temple.
+pub fn grimoire_exists(temple_id: &str) -> Result<bool> {
+    let dir = paths::grimoire_dir(temple_id)?;
     if !dir.exists() {
         return Ok(false);
     }
     // Check that all section files + meta exist
     for name in &SECTION_NAMES {
-        if !paths::grimoire_section_path(name)?.exists() {
+        if !paths::grimoire_section_path(temple_id, name)?.exists() {
             return Ok(false);
         }
     }
-    Ok(paths::grimoire_meta_path()?.exists())
+    Ok(paths::grimoire_meta_path(temple_id)?.exists())
 }
 
 /// Deploy (import) a grimoire from 5 plaintext markdown sections.
@@ -34,6 +34,7 @@ pub fn grimoire_exists() -> Result<bool> {
 /// Returns the computed grimoire hash.
 pub fn deploy_grimoire(
     master_key: &[u8; 32],
+    temple_id: &str,
     sections: &[(&str, &[u8]); 5],
 ) -> Result<[u8; 32]> {
     // Validate section names match expected order
@@ -62,12 +63,12 @@ pub fn deploy_grimoire(
     let meta = create_initial_meta(&contents);
 
     // Ensure grimoire directory exists
-    let dir = paths::grimoire_dir()?;
+    let dir = paths::grimoire_dir(temple_id)?;
     fs::create_dir_all(&dir)?;
 
     // Encrypt and write each section
     for (name, content) in sections {
-        let path = paths::grimoire_section_path(name)?;
+        let path = paths::grimoire_section_path(temple_id, name)?;
         let path_str = path.to_string_lossy().to_string();
         let encrypted = cipher::encrypt(master_key, &hash, &path_str, content)?;
         fs::write(&path, &encrypted)
@@ -76,7 +77,7 @@ pub fn deploy_grimoire(
 
     // Encrypt and write meta.json
     let meta_json = serde_json::to_vec(&meta)?;
-    let meta_path = paths::grimoire_meta_path()?;
+    let meta_path = paths::grimoire_meta_path(temple_id)?;
     let meta_path_str = meta_path.to_string_lossy().to_string();
     let encrypted_meta = cipher::encrypt(master_key, &hash, &meta_path_str, &meta_json)?;
     fs::write(&meta_path, &encrypted_meta).context("Failed to write grimoire meta.json")?;
@@ -84,9 +85,9 @@ pub fn deploy_grimoire(
     Ok(hash)
 }
 
-/// Read and decrypt the grimoire metadata.
-pub fn read_grimoire_meta(master_key: &[u8; 32]) -> Result<GrimoireMeta> {
-    let path = paths::grimoire_meta_path()?;
+/// Read and decrypt the grimoire metadata for a temple.
+pub fn read_grimoire_meta(master_key: &[u8; 32], temple_id: &str) -> Result<GrimoireMeta> {
+    let path = paths::grimoire_meta_path(temple_id)?;
     let encrypted = fs::read(&path).context("Failed to read grimoire meta.json")?;
     let path_str = path.to_string_lossy().to_string();
     let (_hash, plaintext) = cipher::decrypt(master_key, &path_str, &encrypted)?;
@@ -96,8 +97,8 @@ pub fn read_grimoire_meta(master_key: &[u8; 32]) -> Result<GrimoireMeta> {
 
 /// Read and decrypt a single grimoire section by name.
 /// Returns the plaintext content.
-pub fn read_grimoire_section(master_key: &[u8; 32], section_name: &str) -> Result<Vec<u8>> {
-    let path = paths::grimoire_section_path(section_name)?;
+pub fn read_grimoire_section(master_key: &[u8; 32], temple_id: &str, section_name: &str) -> Result<Vec<u8>> {
+    let path = paths::grimoire_section_path(temple_id, section_name)?;
     let encrypted =
         fs::read(&path).with_context(|| format!("Failed to read grimoire section: {}", section_name))?;
     let path_str = path.to_string_lossy().to_string();
@@ -108,11 +109,11 @@ pub fn read_grimoire_section(master_key: &[u8; 32], section_name: &str) -> Resul
 /// Read and decrypt all 5 grimoire sections in canonical order.
 /// Returns (sections_as_vec, grimoire_meta).
 #[allow(dead_code)]
-pub fn read_all_sections(master_key: &[u8; 32]) -> Result<(Vec<Vec<u8>>, GrimoireMeta)> {
-    let meta = read_grimoire_meta(master_key)?;
+pub fn read_all_sections(master_key: &[u8; 32], temple_id: &str) -> Result<(Vec<Vec<u8>>, GrimoireMeta)> {
+    let meta = read_grimoire_meta(master_key, temple_id)?;
     let mut sections = Vec::with_capacity(5);
     for name in section_names() {
-        let content = read_grimoire_section(master_key, name)?;
+        let content = read_grimoire_section(master_key, temple_id, name)?;
         sections.push(content);
     }
     Ok((sections, meta))
@@ -120,8 +121,8 @@ pub fn read_all_sections(master_key: &[u8; 32]) -> Result<(Vec<Vec<u8>>, Grimoir
 
 /// Validate grimoire integrity: recompute hash from decrypted sections
 /// and verify it matches the current hash in meta.json.
-pub fn validate_grimoire(master_key: &[u8; 32]) -> Result<bool> {
-    let (sections, meta) = read_all_sections(master_key)?;
+pub fn validate_grimoire(master_key: &[u8; 32], temple_id: &str) -> Result<bool> {
+    let (sections, meta) = read_all_sections(master_key, temple_id)?;
     let refs: [&[u8]; 5] = [
         &sections[0],
         &sections[1],

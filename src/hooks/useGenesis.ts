@@ -6,6 +6,7 @@ import { useCallback } from 'react';
 import { useAppState } from '../state/appState';
 import { useGenesisState } from '../state/genesisState';
 import { logPrompt } from '../ui/DebugPanel';
+import { isAuthError, requestAuthRecovery } from '../ui/AuthRecovery';
 
 /** Extract readable text from a response that may be raw text, JSON, or markdown-wrapped JSON. */
 function extractDisplayText(response: string): string {
@@ -51,6 +52,9 @@ export function useGenesis() {
       return response;
     } catch (e) {
       const msg = typeof e === 'string' ? e : (e as Error).message;
+      if (isAuthError(msg)) {
+        requestAuthRecovery();
+      }
       dispatch({ type: 'SET_ERROR', error: msg });
       throw e;
     } finally {

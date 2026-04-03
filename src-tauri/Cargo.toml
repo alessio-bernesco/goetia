@@ -1,6 +1,6 @@
 [package]
 name = "goetia"
-version = "0.1.0"
+version = "0.2.0"
 description = "GOETIA — Digital Grimoire"
 authors = ["Alessio Bernesco Lavore"]
 edition = "2021"

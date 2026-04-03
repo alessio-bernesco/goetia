@@ -9,14 +9,14 @@ use anyhow::Result;
 /// Build system prompt blocks for genesis mode.
 /// Composition: grimoire §1 (identity) + §2 (laws) + §3 (genesis)
 /// §1 and §2 are cached (stable across all sessions).
-pub fn build_genesis_prompt(master_key: &[u8; 32]) -> Result<Vec<SystemBlock>> {
+pub fn build_genesis_prompt(master_key: &[u8; 32], temple_id: &str) -> Result<Vec<SystemBlock>> {
     let names = section_names();
     // §1 identity — cached
-    let identity = storage::read_grimoire_section(master_key, names[0])?;
+    let identity = storage::read_grimoire_section(master_key, temple_id, names[0])?;
     // §2 laws — cached (last cached block gets the cache_control marker)
-    let laws = storage::read_grimoire_section(master_key, names[1])?;
+    let laws = storage::read_grimoire_section(master_key, temple_id, names[1])?;
     // §3 genesis — not cached (changes the semantic mode)
-    let genesis = storage::read_grimoire_section(master_key, names[2])?;
+    let genesis = storage::read_grimoire_section(master_key, temple_id, names[2])?;
 
     Ok(vec![
         SystemBlock::cached(String::from_utf8_lossy(&identity)),
@@ -31,23 +31,24 @@ pub fn build_genesis_prompt(master_key: &[u8; 32]) -> Result<Vec<SystemBlock>> {
 /// §1 and §2 are cached. Seal is cached if stable (which it is — immutable after genesis).
 pub fn build_evocation_prompt(
     master_key: &[u8; 32],
+    temple_id: &str,
     demon_name: &str,
 ) -> Result<Vec<SystemBlock>> {
     let names = section_names();
 
     // §1 identity — cached
-    let identity = storage::read_grimoire_section(master_key, names[0])?;
+    let identity = storage::read_grimoire_section(master_key, temple_id, names[0])?;
     // §2 laws — cached
-    let laws = storage::read_grimoire_section(master_key, names[1])?;
+    let laws = storage::read_grimoire_section(master_key, temple_id, names[1])?;
     // §4 session protocol
-    let session = storage::read_grimoire_section(master_key, names[3])?;
+    let session = storage::read_grimoire_section(master_key, temple_id, names[3])?;
     // §5 chronicles protocol
-    let chronicles = storage::read_grimoire_section(master_key, names[4])?;
+    let chronicles = storage::read_grimoire_section(master_key, temple_id, names[4])?;
 
     // Demon seal — cached (immutable after genesis)
-    let seal = storage::read_seal(master_key, demon_name)?;
+    let seal = storage::read_seal(master_key, temple_id, demon_name)?;
     // Demon essence — not cached (changes every session)
-    let essence = storage::read_essence(master_key, demon_name)?;
+    let essence = storage::read_essence(master_key, temple_id, demon_name)?;
 
     let mut blocks = vec![
         SystemBlock::cached(String::from_utf8_lossy(&identity)),
