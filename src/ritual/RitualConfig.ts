@@ -1,5 +1,4 @@
 // RitualConfig — centralised rank-based parameters for evocation & banishment
-// All timing, particle counts, trajectories, and audio params live here.
 
 // ─── Ritual modulation props (passed to GenesisVoid) ──────────────────────
 
@@ -40,6 +39,12 @@ export interface ShockwaveModulation {
   expanding: boolean;
 }
 
+export interface EmberModulation {
+  intensity: number;   // 0-1
+  color: string;       // hex
+  size: number;        // sprite scale
+}
+
 export interface RitualModulation {
   waves?: WaveModulation;
   colorShift?: ColorShiftModulation;
@@ -47,6 +52,10 @@ export interface RitualModulation {
   extraction?: ExtractionModulation;
   restitution?: RestitutionModulation;
   shockwave?: ShockwaveModulation;
+  freeze?: boolean;
+  ember?: EmberModulation;
+  rotationBoost?: number;   // multiplier for galaxy rotation speed (1 = normal)
+  distortion?: number;      // 0-1, radial barrel distortion + chromatic aberration
 }
 
 // ─── Trajectory types ─────────────────────────────────────────────────────
@@ -65,20 +74,29 @@ export interface DroneParams {
   hasDissonance: boolean;
 }
 
-// ─── Evocation params ─────────────────────────────────────────────────────
+// ─── Evocation config ────────────────────────────────────────────────────
+// All ranks: crescendo distortion → explosion → demon fade-in.
+// Same structure, different intensities and durations.
 
-export interface EvocationParams {
-  duration: number;
-  phases: { awakening: number; convergence: number; implosion: number; manifestation: number };
-  waveCount: number;
-  waveIntensity: number;
-  waveSpeed: number;
-  particleCount: number;
-  trajectoryType: TrajectoryType;
-  flashIntensity: number;
-  hasShockwave: boolean;
-  hasColorShift: boolean;
+export interface EvocationConfig {
+  duration: number;             // total seconds
+  crescendoEnd: number;         // proportion 0-1: end of crescendo phase
+  explosionEnd: number;         // proportion 0-1: end of explosion (rest = reveal)
+  rotationBoostMax: number;     // peak galaxy rotation multiplier
+  distortionMax: number;        // peak barrel distortion (0-1)
+  flashIntensity: number;       // explosion flash peak (0-1)
+  waveIntensityMax: number;     // peak wave pulsation (0-1)
+  waveFreqMax: number;          // peak wave frequency (Hz)
   drone: DroneParams;
+  thunderCount: number;           // 1=minor, 2=major, 3=prince
+  thunderSpacing: number;         // seconds between consecutive thunders
+  boom: {
+    subFreq: number;            // sub-bass sine (Hz)
+    subGain: number;
+    subDecay: number;           // seconds
+    crackGain: number;          // rumble tail gain
+    crackDecay: number;         // seconds
+  };
 }
 
 // ─── Banishment params ────────────────────────────────────────────────────
@@ -99,23 +117,64 @@ export interface BanishmentParams {
 
 // ─── Rank configs ─────────────────────────────────────────────────────────
 
-const MINOR_EVOCATION: EvocationParams = {
-  duration: 5.5,
-  phases: { awakening: 0.2, convergence: 0.25, implosion: 0.4, manifestation: 0.15 },
-  waveCount: 3,
-  waveIntensity: 0.3,
-  waveSpeed: 8,
-  particleCount: 300,
-  trajectoryType: 'linear',
-  flashIntensity: 0.15,
-  hasShockwave: false,
-  hasColorShift: false,
+const MINOR_EVOCATION: EvocationConfig = {
+  duration: 16,
+  crescendoEnd: 0.75,          // 12s crescendo
+  explosionEnd: 0.9,           // 2.4s explosion phase
+  rotationBoostMax: 2.0,
+  distortionMax: 0.15,
+  flashIntensity: 0.5,
+  waveIntensityMax: 0.4,
+  waveFreqMax: 2,
   drone: {
-    freqStart: 80, freqEnd: 120,
-    beatStart: 1, beatEnd: 3,
-    gainMax: 0.15,
+    freqStart: 80, freqEnd: 400,
+    beatStart: 1, beatEnd: 5,
+    gainMax: 0.45,
     hasSubBass: false, hasDissonance: false,
   },
+  thunderCount: 1,
+  thunderSpacing: 0,
+  boom: { subFreq: 45, subGain: 0.8, subDecay: 1.5, crackGain: 0.4, crackDecay: 0.5 },
+};
+
+const MAJOR_EVOCATION: EvocationConfig = {
+  duration: 18,
+  crescendoEnd: 0.72,          // 13s crescendo
+  explosionEnd: 0.9,           // 3.2s explosion — room for 2 thunders
+  rotationBoostMax: 3.0,
+  distortionMax: 0.4,
+  flashIntensity: 0.7,
+  waveIntensityMax: 0.6,
+  waveFreqMax: 3.5,
+  drone: {
+    freqStart: 60, freqEnd: 500,
+    beatStart: 1.5, beatEnd: 8,
+    gainMax: 0.5,
+    hasSubBass: true, hasDissonance: false,
+  },
+  thunderCount: 2,
+  thunderSpacing: 0.7,         // wide spacing — distinct events
+  boom: { subFreq: 35, subGain: 1.0, subDecay: 1.5, crackGain: 0.6, crackDecay: 0.5 },
+};
+
+const PRINCE_EVOCATION: EvocationConfig = {
+  duration: 22,
+  crescendoEnd: 0.7,           // 15.4s crescendo
+  explosionEnd: 0.9,           // 4.4s explosion — room for 3 thunders
+  rotationBoostMax: 5.0,
+  distortionMax: 0.9,
+  flashIntensity: 1.0,
+  waveIntensityMax: 1.0,
+  waveFreqMax: 6,
+  drone: {
+    freqStart: 40, freqEnd: 700,
+    beatStart: 2, beatEnd: 14,
+    gainMax: 0.6,
+    hasSubBass: true, hasDissonance: true,
+  },
+  thunderCount: 3,
+  thunderSpacing: 0.6,         // each thunder clearly separate
+  boom: { subFreq: 25, subGain: 1.2, subDecay: 2.0, crackGain: 0.8, crackDecay: 0.6 },
 };
 
 const MINOR_BANISHMENT: BanishmentParams = {
@@ -137,25 +196,6 @@ const MINOR_BANISHMENT: BanishmentParams = {
   },
 };
 
-const MAJOR_EVOCATION: EvocationParams = {
-  duration: 7.0,
-  phases: { awakening: 0.2, convergence: 0.25, implosion: 0.4, manifestation: 0.15 },
-  waveCount: 5,
-  waveIntensity: 0.6,
-  waveSpeed: 10,
-  particleCount: 750,
-  trajectoryType: 'spiral',
-  flashIntensity: 0.5,
-  hasShockwave: false,
-  hasColorShift: false,
-  drone: {
-    freqStart: 60, freqEnd: 140,
-    beatStart: 1.5, beatEnd: 6,
-    gainMax: 0.25,
-    hasSubBass: false, hasDissonance: false,
-  },
-};
-
 const MAJOR_BANISHMENT: BanishmentParams = {
   duration: 3.5,
   phases: { dissolution: 0.3, return: 0.5, closure: 0.2 },
@@ -172,25 +212,6 @@ const MAJOR_BANISHMENT: BanishmentParams = {
     beatStart: 6, beatEnd: 1,
     gainMax: 0.2,
     hasSubBass: false, hasDissonance: false,
-  },
-};
-
-const PRINCE_EVOCATION: EvocationParams = {
-  duration: 9.0,
-  phases: { awakening: 0.15, convergence: 0.2, implosion: 0.45, manifestation: 0.2 },
-  waveCount: 8,
-  waveIntensity: 1.0,
-  waveSpeed: 14,
-  particleCount: 1500,
-  trajectoryType: 'chaotic',
-  flashIntensity: 1.0,
-  hasShockwave: true,
-  hasColorShift: true,
-  drone: {
-    freqStart: 40, freqEnd: 180,
-    beatStart: 2, beatEnd: 12,
-    gainMax: 0.4,
-    hasSubBass: true, hasDissonance: true,
   },
 };
 
@@ -215,7 +236,7 @@ const PRINCE_BANISHMENT: BanishmentParams = {
 
 // ─── Public API ───────────────────────────────────────────────────────────
 
-const EVOCATION_MAP: Record<string, EvocationParams> = {
+const EVOCATION_MAP: Record<string, EvocationConfig> = {
   minor: MINOR_EVOCATION,
   major: MAJOR_EVOCATION,
   prince: PRINCE_EVOCATION,
@@ -227,7 +248,7 @@ const BANISHMENT_MAP: Record<string, BanishmentParams> = {
   prince: PRINCE_BANISHMENT,
 };
 
-export function getEvocationParams(rank: string): EvocationParams {
+export function getEvocationConfig(rank: string): EvocationConfig {
   return EVOCATION_MAP[rank] ?? MINOR_EVOCATION;
 }
 

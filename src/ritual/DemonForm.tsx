@@ -18,6 +18,7 @@ interface DemonFormProps {
   waiting?: boolean;
   speaking?: boolean;
   arriving?: boolean;
+  arrivalDuration?: number;
   departing?: boolean;
   onDepartComplete?: () => void;
 }
@@ -121,8 +122,8 @@ interface BodyRef {
   baseWireframeOpacity: number;
 }
 
-// Arrival animation duration (seconds)
-const ARRIVAL_DURATION = 4.0;
+// Default arrival animation duration (seconds)
+const DEFAULT_ARRIVAL_DURATION = 4.0;
 // Peak perturbation strength during arrival (speaking=1 is normal speech)
 const ARRIVAL_PERTURBATION = 3.5;
 // Departure animation duration (seconds)
@@ -141,7 +142,8 @@ interface DepartureState {
   basePositions: Float32Array | null;
 }
 
-export function DemonForm({ manifest, visualState, waiting = false, speaking = false, arriving = false, departing = false, onDepartComplete }: DemonFormProps) {
+export function DemonForm({ manifest, visualState, waiting = false, speaking = false, arriving = false, arrivalDuration, departing = false, onDepartComplete }: DemonFormProps) {
+  const arrivalDur = arrivalDuration ?? DEFAULT_ARRIVAL_DURATION;
   const bodiesRef = useRef<BodyRef[]>([]);
   const arrivalRef = useRef<{ startTime: number; active: boolean }>({ startTime: -1, active: arriving });
   const departureRef = useRef<DepartureState>({ startTime: -1, active: false, completed: false, particles: null, velocities: null, basePositions: null });
@@ -314,9 +316,9 @@ export function DemonForm({ manifest, visualState, waiting = false, speaking = f
     if (arr.active) {
       if (arr.startTime < 0) arr.startTime = time;
       const elapsed = time - arr.startTime;
-      if (elapsed < ARRIVAL_DURATION) {
+      if (elapsed < arrivalDur) {
         // Linear fade — long, steady, very visible transparency transition
-        arrivalFactor = 1 - elapsed / ARRIVAL_DURATION;
+        arrivalFactor = 1 - elapsed / arrivalDur;
       } else {
         arr.active = false;
         arrivalFactor = 0;
@@ -484,7 +486,7 @@ export function DemonForm({ manifest, visualState, waiting = false, speaking = f
         }
       }
     }
-  }, [visualState?.arousal, speaking, waiting, manifest.opacity]);
+  }, [visualState?.arousal, speaking, waiting, manifest.opacity, arrivalDur]);
 
   return <Scene children={setup} onFrame={onFrame} transparent />;
 }

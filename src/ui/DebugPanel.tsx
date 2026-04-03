@@ -55,18 +55,25 @@ export function DebugPanel() {
 
   const handleEvocationComplete = useCallback(() => {
     setRitualState('present');
+    setRitualDemonRevealed(false);
   }, []);
 
+  const [ritualDemonRevealed, setRitualDemonRevealed] = useState(false);
   const [ritualDemonDissolved, setRitualDemonDissolved] = useState(false);
 
   const handleDepartComplete = useCallback(() => {
     setRitualDemonDissolved(true);
   }, []);
 
+  const handleDemonReveal = useCallback(() => {
+    setRitualDemonRevealed(true);
+  }, []);
+
   const handleBanishmentComplete = useCallback(() => {
     setRitualState('idle');
     setRitualManifest(null);
     setRitualDemonDissolved(false);
+    setRitualDemonRevealed(false);
   }, []);
 
   useEvocation(
@@ -75,6 +82,7 @@ export function DebugPanel() {
     ritualManifest,
     handleEvocationComplete,
     debugRitualRef,
+    handleDemonReveal,
   );
 
   useBanishment(
@@ -356,11 +364,12 @@ export function DebugPanel() {
           marginTop: '4px',
         }}>
           <GenesisVoid ritualRef={debugRitualRef} />
-          {(ritualState === 'present' || (ritualState === 'banishing' && !ritualDemonDissolved)) && ritualManifest && (
+          {(ritualState === 'present' || ritualDemonRevealed || (ritualState === 'banishing' && !ritualDemonDissolved)) && ritualManifest && (
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
               <DemonForm
                 manifest={ritualManifest}
-                arriving={ritualState === 'present'}
+                arriving={ritualState === 'present' || ritualDemonRevealed}
+                arrivalDuration={ritualRank === 'prince' ? 2.0 : ritualRank === 'major' ? 2.0 : 1.0}
                 departing={ritualState === 'banishing'}
                 onDepartComplete={handleDepartComplete}
               />
@@ -429,6 +438,8 @@ export function DebugPanel() {
         )}
       </Section>
 
+      <ApiKeySection />
+
       <Section title="SISTEMA">
         <div style={{ fontSize: '9px', color: '#666', padding: '4px 0' }}>
           Release: <span style={{ color: '#aaa' }}>v{appVersion}</span>
@@ -440,6 +451,121 @@ export function DebugPanel() {
         Ctrl+Shift+D per chiudere
       </div>
     </div>
+  );
+}
+
+function ApiKeySection() {
+  type KeyStatus = 'unknown' | 'valid' | 'invalid' | 'checking';
+  const [status, setStatus] = useState<KeyStatus>('unknown');
+  const [lastCheck, setLastCheck] = useState<string | null>(null);
+  const [replacing, setReplacing] = useState(false);
+  const [newKey, setNewKey] = useState('');
+  const [replaceError, setReplaceError] = useState<string | null>(null);
+  const [replaceLoading, setReplaceLoading] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const statusColor = { unknown: '#555', valid: '#4a7a4a', invalid: '#8a3a3a', checking: '#7a7a3a' }[status];
+  const statusLabel = { unknown: 'non verificata', valid: 'valida', invalid: 'non valida', checking: 'verifica...' }[status];
+
+  const verify = useCallback(async () => {
+    setStatus('checking');
+    try {
+      const valid = await invoke<boolean>('verify_stored_api_key');
+      setStatus(valid ? 'valid' : 'invalid');
+      setLastCheck(new Date().toLocaleTimeString());
+    } catch {
+      setStatus('invalid');
+      setLastCheck(new Date().toLocaleTimeString());
+    }
+  }, []);
+
+  const handleReplace = useCallback(async () => {
+    setReplaceLoading(true);
+    setReplaceError(null);
+    try {
+      await invoke('update_api_key', { key: newKey });
+      setNewKey('');
+      setReplacing(false);
+      setStatus('valid');
+      setLastCheck(new Date().toLocaleTimeString());
+    } catch (e) {
+      setReplaceError(typeof e === 'string' ? e : 'Sostituzione fallita');
+    } finally {
+      setReplaceLoading(false);
+    }
+  }, [newKey]);
+
+  const handleDelete = useCallback(async () => {
+    try {
+      await invoke('delete_api_key');
+      window.location.reload();
+    } catch (e) {
+      console.error('Delete API key failed:', e);
+    }
+  }, []);
+
+  return (
+    <Section title="API KEY">
+      <div style={{ fontSize: '9px', color: '#666', padding: '4px 0' }}>
+        Stato: <span style={{ color: statusColor }}>● {statusLabel}</span>
+        {lastCheck && <span style={{ color: '#444', marginLeft: '8px' }}>{lastCheck}</span>}
+      </div>
+      <Btn onClick={verify}>Verifica ora</Btn>
+      {!replacing ? (
+        <Btn onClick={() => setReplacing(true)}>Sostituisci key</Btn>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <input
+            type="password"
+            value={newKey}
+            onChange={e => setNewKey(e.target.value)}
+            placeholder="sk-ant-..."
+            style={{
+              background: '#0a0a0a',
+              border: '1px solid #1a1a1a',
+              color: '#999',
+              fontFamily: 'inherit',
+              fontSize: '9px',
+              padding: '5px 8px',
+              outline: 'none',
+            }}
+          />
+          <div style={{ display: 'flex', gap: '3px' }}>
+            <button onClick={handleReplace} disabled={replaceLoading || !newKey.trim()} style={{
+              background: 'transparent', border: '1px solid #222', color: '#777',
+              fontFamily: 'inherit', fontSize: '9px', padding: '4px 8px', cursor: 'pointer', flex: 1,
+            }}>
+              {replaceLoading ? 'VERIFICA...' : 'CONFERMA'}
+            </button>
+            <button onClick={() => { setReplacing(false); setNewKey(''); setReplaceError(null); }} style={{
+              background: 'transparent', border: '1px solid #222', color: '#555',
+              fontFamily: 'inherit', fontSize: '9px', padding: '4px 8px', cursor: 'pointer',
+            }}>
+              ✕
+            </button>
+          </div>
+          {replaceError && <div style={{ fontSize: '8px', color: '#8a3a3a' }}>{replaceError}</div>}
+        </div>
+      )}
+      {!confirmingDelete ? (
+        <Btn onClick={() => setConfirmingDelete(true)} danger>Elimina key</Btn>
+      ) : (
+        <div style={{ display: 'flex', gap: '3px' }}>
+          <button onClick={handleDelete} style={{
+            background: 'transparent', border: '1px solid #4a1a1a', color: '#8a3a3a',
+            fontFamily: 'inherit', fontSize: '9px', padding: '4px 8px', cursor: 'pointer', flex: 1,
+          }}>
+            CONFERMA ELIMINAZIONE
+          </button>
+          <button onClick={() => setConfirmingDelete(false)} style={{
+            background: 'transparent', border: '1px solid #222', color: '#555',
+            fontFamily: 'inherit', fontSize: '9px', padding: '4px 8px', cursor: 'pointer',
+          }}>
+            ✕
+          </button>
+        </div>
+      )}
+    </Section>
   );
 }
 

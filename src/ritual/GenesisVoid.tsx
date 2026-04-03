@@ -8,6 +8,7 @@ import type { RitualModulation } from './RitualConfig';
 
 import shockwaveVertSrc from './shaders/shockwave.vert.glsl?raw';
 import shockwaveFragSrc from './shaders/shockwave.frag.glsl?raw';
+import distortionFragSrc from './shaders/distortion.frag.glsl?raw';
 
 interface GenesisVoidProps {
   ritual?: RitualModulation;
@@ -64,6 +65,13 @@ export function GenesisVoid({ ritual, ritualRef: externalRitualRef }: GenesisVoi
     waves: WaveState;
     // Shockwave post-processing (lazy init)
     shockwave: {
+      renderTarget: THREE.WebGLRenderTarget;
+      quadScene: THREE.Scene;
+      quadCamera: THREE.OrthographicCamera;
+      material: THREE.ShaderMaterial;
+    } | null;
+    ember: THREE.Sprite | null;
+    distortion: {
       renderTarget: THREE.WebGLRenderTarget;
       quadScene: THREE.Scene;
       quadCamera: THREE.OrthographicCamera;
@@ -161,6 +169,8 @@ export function GenesisVoid({ ritual, ritualRef: externalRitualRef }: GenesisVoi
       restitution: null,
       waves: { emitTimes: [], lastEmitTime: 0 },
       shockwave: null,
+      ember: null,
+      distortion: null,
     };
   };
 
@@ -170,16 +180,27 @@ export function GenesisVoid({ ritual, ritualRef: externalRitualRef }: GenesisVoi
     const { clouds, grid } = state;
     const r = ritualRef.current;
 
-    // ─── Base rotation (always active) ──────────────────────────────
-    for (const cd of clouds) {
-      const { axis, speed } = cd.cloud.userData;
-      cd.cloud.rotateOnAxis(axis, speed);
+    const frozen = r?.freeze === true;
+
+    // ─── Base rotation (skip during freeze, apply boost) ──────────
+    const rotBoost = r?.rotationBoost ?? 1;
+    if (!frozen) {
+      for (const cd of clouds) {
+        const { axis, speed } = cd.cloud.userData;
+        cd.cloud.rotateOnAxis(axis, speed * rotBoost);
+      }
+      grid.position.z = Math.sin(time * 0.1) * 0.5;
     }
-    grid.position.z = Math.sin(time * 0.1) * 0.5;
 
     // ─── No ritual? Reset and return ────────────────────────────────
     if (!r) {
       resetRitualState(state, time);
+      return;
+    }
+
+    // ─── Frozen: skip wave/extraction animation, keep visual state ──
+    if (frozen) {
+      updateEmber(state, r);
       return;
     }
 
@@ -300,6 +321,9 @@ export function GenesisVoid({ ritual, ritualRef: externalRitualRef }: GenesisVoi
       cleanupRestitution(state);
     }
 
+    // ─── Ember (central glow point) ────────────────────────────────
+    updateEmber(state, r);
+
     // ─── Shockwave post-processing uniforms ─────────────────────────
     if (r.shockwave && r.shockwave.intensity > 0.001) {
       if (!state.shockwave && state.renderer) {
@@ -315,19 +339,55 @@ export function GenesisVoid({ ritual, ritualRef: externalRitualRef }: GenesisVoi
     } else if (state.shockwave) {
       cleanupShockwave(state);
     }
+
+    // ─── Distortion post-processing ─────────────────────────────────
+    if (r.distortion && r.distortion > 0.001) {
+      if (!state.distortion && state.renderer) {
+        state.distortion = createDistortionPass(state.renderer);
+      }
+      if (state.distortion) {
+        state.distortion.material.uniforms.uDistortion.value = r.distortion;
+        state.distortion.material.uniforms.uCenter.value.set(0.5, 0.5);
+      }
+    } else if (state.distortion) {
+      cleanupDistortion(state);
+    }
   };
 
-  // Render override for shockwave post-processing
+  // Render override for post-processing (distortion and/or shockwave)
   const renderOverride = useCallback((renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
     const state = objectsRef.current;
-    if (state?.shockwave) {
-      const sw = state.shockwave;
-      // Render scene to texture
+    const hasShockwave = !!state?.shockwave;
+    const hasDistortion = !!state?.distortion;
+
+    if (hasDistortion && hasShockwave) {
+      // Distortion first, then shockwave on top
+      const dist = state!.distortion!;
+      const sw = state!.shockwave!;
+      // Scene → distortion RT
+      renderer.setRenderTarget(dist.renderTarget);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+      // Distortion quad → shockwave RT
+      sw.material.uniforms.tDiffuse.value = dist.renderTarget.texture;
+      renderer.setRenderTarget(sw.renderTarget);
+      renderer.render(dist.quadScene, dist.quadCamera);
+      renderer.setRenderTarget(null);
+      // Feed distorted result to shockwave
+      sw.material.uniforms.tDiffuse.value = sw.renderTarget.texture;
+      renderer.render(sw.quadScene, sw.quadCamera);
+    } else if (hasShockwave) {
+      const sw = state!.shockwave!;
       renderer.setRenderTarget(sw.renderTarget);
       renderer.render(scene, camera);
       renderer.setRenderTarget(null);
-      // Render fullscreen quad with shockwave distortion
       renderer.render(sw.quadScene, sw.quadCamera);
+    } else if (hasDistortion) {
+      const dist = state!.distortion!;
+      renderer.setRenderTarget(dist.renderTarget);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+      renderer.render(dist.quadScene, dist.quadCamera);
     } else {
       renderer.render(scene, camera);
     }
@@ -360,6 +420,15 @@ function resetRitualState(state: any, _time: number) {
   if (obj.restitution?.active) cleanupRestitution(obj);
   // Clean up shockwave
   if (obj.shockwave) cleanupShockwave(obj);
+  // Clean up distortion
+  if (obj.distortion) cleanupDistortion(obj);
+  // Clean up ember
+  if (obj.ember) {
+    obj.scene.remove(obj.ember);
+    (obj.ember.material as THREE.SpriteMaterial).map?.dispose();
+    (obj.ember.material as THREE.SpriteMaterial).dispose();
+    obj.ember = null;
+  }
   // Reset wave state
   obj.waves.emitTimes = [];
 }
@@ -692,4 +761,87 @@ function cleanupShockwave(state: any) {
   sw.renderTarget.dispose();
   sw.material.dispose();
   state.shockwave = null;
+}
+
+// ─── Distortion post-processing ────────────────────────────────────────────
+
+function createDistortionPass(renderer: THREE.WebGLRenderer) {
+  const size = renderer.getSize(new THREE.Vector2());
+  const renderTarget = new THREE.WebGLRenderTarget(
+    size.x * renderer.getPixelRatio(),
+    size.y * renderer.getPixelRatio(),
+  );
+
+  const material = new THREE.ShaderMaterial({
+    vertexShader: shockwaveVertSrc, // reuse simple passthrough vert
+    fragmentShader: distortionFragSrc,
+    uniforms: {
+      tDiffuse: { value: renderTarget.texture },
+      uDistortion: { value: 0 },
+      uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    },
+    depthWrite: false,
+    depthTest: false,
+  });
+
+  const quadGeo = new THREE.PlaneGeometry(2, 2);
+  const quadMesh = new THREE.Mesh(quadGeo, material);
+  const quadScene = new THREE.Scene();
+  quadScene.add(quadMesh);
+  const quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+  return { renderTarget, quadScene, quadCamera, material };
+}
+
+function cleanupDistortion(state: any) {
+  if (!state.distortion) return;
+  const d = state.distortion;
+  d.renderTarget.dispose();
+  d.material.dispose();
+  state.distortion = null;
+}
+
+// ─── Ember (central glow sprite) ───────────────────────────────────────────
+
+function createEmberSprite(color: string): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.2, color);
+  gradient.addColorStop(0.6, color + '44');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.renderOrder = 15;
+  return sprite;
+}
+
+function updateEmber(state: any, r: any) {
+  if (r?.ember && r.ember.intensity > 0.01) {
+    if (!state.ember) {
+      state.ember = createEmberSprite(r.ember.color);
+      state.scene.add(state.ember);
+    }
+    const mat = state.ember.material as THREE.SpriteMaterial;
+    mat.opacity = r.ember.intensity;
+    const s = r.ember.size;
+    state.ember.scale.set(s, s, s);
+  } else if (state.ember) {
+    state.scene.remove(state.ember);
+    (state.ember.material as THREE.SpriteMaterial).map?.dispose();
+    (state.ember.material as THREE.SpriteMaterial).dispose();
+    state.ember = null;
+  }
 }

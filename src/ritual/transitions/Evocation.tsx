@@ -1,16 +1,16 @@
-// Evocation — hook that orchestrates the evocation sequence
-// Computes RitualModulation props for GenesisVoid frame-by-frame
+// Evocation — crescendo distortion → explosion → demon fade-in
+// Same structure for all ranks, parameterized by EvocationConfig.
 
 import { useRef, useEffect } from 'react';
 import {
   type RitualModulation,
-  type EvocationParams,
-  getEvocationParams,
+  type EvocationConfig,
+  getEvocationConfig,
 } from '../RitualConfig';
 import { ritualDrone } from '../../audio/RitualDrone';
 import type { DemonManifest } from '../types';
 
-export type EvocationPhase = 'idle' | 'awakening' | 'convergence' | 'implosion' | 'manifestation' | 'complete';
+export type EvocationPhase = 'idle' | 'crescendo' | 'explosion' | 'reveal' | 'complete';
 
 export interface UseEvocationResult {
   ritualProps: RitualModulation | undefined;
@@ -22,10 +22,11 @@ interface EvocationState {
   startTime: number;
   phase: EvocationPhase;
   progress: number;
-  params: EvocationParams;
+  config: EvocationConfig;
   glowColor: string;
   ritualProps: RitualModulation;
   droneStarted: boolean;
+  demonRevealed: boolean;
 }
 
 export function useEvocation(
@@ -34,6 +35,7 @@ export function useEvocation(
   manifest: DemonManifest | null,
   onComplete: () => void,
   ritualRef?: React.MutableRefObject<RitualModulation | undefined>,
+  onDemonReveal?: () => void,
 ): UseEvocationResult {
   const stateRef = useRef<EvocationState | null>(null);
   const resultRef = useRef<UseEvocationResult>({
@@ -44,10 +46,11 @@ export function useEvocation(
   const frameRef = useRef<number>(0);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const onDemonRevealRef = useRef(onDemonReveal);
+  onDemonRevealRef.current = onDemonReveal;
   const ritualRefRef = useRef(ritualRef);
   ritualRefRef.current = ritualRef;
 
-  // Start/stop the animation loop
   useEffect(() => {
     if (!active || !manifest) {
       if (stateRef.current) {
@@ -59,66 +62,45 @@ export function useEvocation(
       return;
     }
 
-    const params = getEvocationParams(rank);
+    const config = getEvocationConfig(rank);
     const glowColor = manifest.glow.color || '#ff4444';
 
     stateRef.current = {
       startTime: -1,
-      phase: 'awakening',
+      phase: 'idle',
       progress: 0,
-      params,
+      config,
       glowColor,
       ritualProps: {},
       droneStarted: false,
+      demonRevealed: false,
     };
 
     const tick = (time: number) => {
       const s = stateRef.current;
       if (!s) return;
 
-      const t = time / 1000; // seconds
-
+      const t = time / 1000;
       if (s.startTime < 0) s.startTime = t;
       const elapsed = t - s.startTime;
-      const duration = s.params.duration;
-      s.progress = Math.min(elapsed / duration, 1);
+      s.progress = Math.min(elapsed / s.config.duration, 1);
 
-      // Start drone on first tick
       if (!s.droneStarted) {
         s.droneStarted = true;
         ritualDrone.startEvocation(rank, s.glowColor);
       }
 
-      // Determine phase
-      const { phases } = s.params;
-      const awakeningEnd = phases.awakening;
-      const convergenceEnd = awakeningEnd + phases.convergence;
-      const implosionEnd = convergenceEnd + phases.implosion;
-
-      if (s.progress < awakeningEnd) {
-        s.phase = 'awakening';
-        composeAwakening(s, s.progress / awakeningEnd, t);
-      } else if (s.progress < convergenceEnd) {
-        s.phase = 'convergence';
-        const phaseProgress = (s.progress - awakeningEnd) / phases.convergence;
-        composeConvergence(s, phaseProgress, t);
-      } else if (s.progress < implosionEnd) {
-        s.phase = 'implosion';
-        const phaseProgress = (s.progress - convergenceEnd) / phases.implosion;
-        composeImplosion(s, phaseProgress, t);
-      } else if (s.progress < 1) {
-        s.phase = 'manifestation';
-        const phaseProgress = (s.progress - implosionEnd) / phases.manifestation;
-        composeManifestation(s, phaseProgress, t);
-      }
-
-      // Update result and write to shared ref for GenesisVoid
-      const props = { ...s.ritualProps };
-      resultRef.current = {
-        ritualProps: props,
-        phase: s.phase,
-        progress: s.progress,
+      const revealDemon = () => {
+        if (!s.demonRevealed) {
+          s.demonRevealed = true;
+          onDemonRevealRef.current?.();
+        }
       };
+
+      orchestrate(s, s.progress, revealDemon);
+
+      const props = { ...s.ritualProps };
+      resultRef.current = { ritualProps: props, phase: s.phase, progress: s.progress };
       if (ritualRefRef.current) ritualRefRef.current.current = props;
 
       if (s.progress >= 1) {
@@ -145,148 +127,149 @@ export function useEvocation(
   return resultRef.current;
 }
 
-// ─── Phase composers ──────────────────────────────────────────────────────
+// ─── Single orchestrator ─────────────────────────────────────────────────
 
-function composeAwakening(s: EvocationState, phaseProgress: number, _time: number) {
-  const p = s.params;
+function orchestrate(s: EvocationState, progress: number, revealDemon: () => void) {
+  const cfg = s.config;
 
-  // Waves: frequency increases over the awakening phase
-  const waveFreq = 0.5 + phaseProgress * (p.waveCount / (p.duration * p.phases.awakening));
-  s.ritualProps = {
-    waves: {
-      origin: [0, 0, 0],
-      speed: p.waveSpeed,
-      intensity: p.waveIntensity * phaseProgress,
-      frequency: waveFreq,
-    },
-  };
+  if (progress < cfg.crescendoEnd) {
+    // ── Crescendo: distortion + rotation + waves build ──
+    const t = progress / cfg.crescendoEnd;
+    s.phase = 'crescendo';
+    composeCrescendo(s, t);
 
-  // Color shift for prince (gradual)
-  if (p.hasColorShift) {
-    s.ritualProps.colorShift = {
-      target: s.glowColor,
-      intensity: phaseProgress * 0.3,
-    };
-  }
-}
+  } else if (progress < cfg.explosionEnd) {
+    // ── Explosion: flash peak, distortion breaks, demon appears ──
+    const t = (progress - cfg.crescendoEnd) / (cfg.explosionEnd - cfg.crescendoEnd);
+    s.phase = 'explosion';
+    revealDemon();
+    composeExplosion(s, t);
 
-function composeConvergence(s: EvocationState, phaseProgress: number, _time: number) {
-  const p = s.params;
-
-  // Particles converge to ~0.6 progress (still spread, not collapsed)
-  const extractionProgress = phaseProgress * 0.6;
-
-  s.ritualProps = {
-    waves: {
-      origin: [0, 0, 0],
-      speed: p.waveSpeed,
-      intensity: p.waveIntensity,
-      frequency: p.waveCount / (p.duration * p.phases.convergence),
-    },
-    extraction: {
-      count: p.particleCount,
-      target: [0, 0, 0],
-      progress: extractionProgress,
-      trajectoryType: p.trajectoryType,
-    },
-  };
-
-  if (p.hasColorShift) {
-    s.ritualProps.colorShift = {
-      target: s.glowColor,
-      intensity: 0.3 + phaseProgress * 0.5,
-    };
-  }
-}
-
-function composeImplosion(s: EvocationState, phaseProgress: number, _time: number) {
-  const p = s.params;
-
-  // Full expansion→compression:
-  // 0.0→0.5: particles EXPLODE back to origin positions (progress 0.6 → 0)
-  //           = they return to the galaxy edges, filling the screen
-  // 0.5→1.0: particles SLAM inward to center (progress 0 → 1.0)
-  //           = accelerating compression, violent
-  let extractionProgress: number;
-  if (phaseProgress < 0.5) {
-    // Expansion: ease-out from 0.6 down to 0 (back to galaxy positions)
-    const expandT = phaseProgress / 0.5;
-    const eased = 1 - (1 - expandT) * (1 - expandT); // ease-out quadratic
-    extractionProgress = 0.6 * (1 - eased);
   } else {
-    // Compression: ease-in from 0 to 1.0 (accelerating slam to center)
-    const compressT = (phaseProgress - 0.5) / 0.5;
-    const eased = compressT * compressT * compressT; // ease-in cubic — slow then FAST
-    extractionProgress = eased;
-  }
-
-  // Waves intensify during compression phase
-  const inCompression = phaseProgress > 0.5;
-  const compressionIntensity = inCompression ? (phaseProgress - 0.5) / 0.5 : 0;
-
-  s.ritualProps = {
-    waves: {
-      origin: [0, 0, 0],
-      speed: p.waveSpeed * (1 + compressionIntensity),
-      intensity: p.waveIntensity * (inCompression ? 1 + compressionIntensity * 0.5 : 0.5),
-      frequency: inCompression
-        ? (p.waveCount / (p.duration * p.phases.implosion)) * (1 + compressionIntensity * 3)
-        : 0.5,
-    },
-    extraction: {
-      count: p.particleCount,
-      target: [0, 0, 0],
-      progress: extractionProgress,
-      trajectoryType: p.trajectoryType,
-    },
-  };
-
-  if (p.hasColorShift) {
-    s.ritualProps.colorShift = {
-      target: s.glowColor,
-      intensity: 0.6 + compressionIntensity * 0.3,
-    };
+    // ── Reveal: flash fades, distortion gone, demon settles ──
+    const t = (progress - cfg.explosionEnd) / (1 - cfg.explosionEnd);
+    s.phase = 'reveal';
+    revealDemon();
+    composeReveal(s, t);
   }
 }
 
-function composeManifestation(s: EvocationState, phaseProgress: number, _time: number) {
-  const p = s.params;
-
-  // Flash peaks at beginning, then fades
-  const flashCurve = phaseProgress < 0.3
-    ? phaseProgress / 0.3
-    : 1 - (phaseProgress - 0.3) / 0.7;
+function composeCrescendo(s: EvocationState, t: number) {
+  const cfg = s.config;
+  // Quadratic ease-in: perceptible early, dramatic ramp at end
+  const eased = t * t;
 
   s.ritualProps = {
-    // Waves dissipate
     waves: {
       origin: [0, 0, 0],
-      speed: p.waveSpeed,
-      intensity: p.waveIntensity * (1 - phaseProgress),
-      frequency: 0.3,
+      speed: 6 + eased * 10,
+      intensity: 0.05 + eased * cfg.waveIntensityMax,
+      frequency: 0.2 + eased * cfg.waveFreqMax,
     },
-    flash: p.flashIntensity > 0 ? {
-      intensity: p.flashIntensity * flashCurve,
+    rotationBoost: 1 + eased * (cfg.rotationBoostMax - 1),
+    distortion: eased * cfg.distortionMax,
+    colorShift: {
+      target: s.glowColor,
+      // Color shift intensifies with distortion — more aberrated = more tinted
+      intensity: eased * (0.2 + cfg.distortionMax * 0.6),
+    },
+  };
+}
+
+// Deterministic pseudo-random from seed — same every frame for a given t
+function pseudoRand(seed: number): number {
+  const x = Math.sin(seed * 12.9898 + seed * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function composeExplosion(s: EvocationState, t: number) {
+  const cfg = s.config;
+  const explosionDur = (cfg.explosionEnd - cfg.crescendoEnd) * cfg.duration;
+  const elapsed = t * explosionDur; // seconds into explosion phase
+
+  // Main flash: distinct peaks for each thunder
+  let flash = 0;
+  let anyThunderActive = false;
+  for (let i = 0; i < cfg.thunderCount; i++) {
+    const thunderStart = i * cfg.thunderSpacing;
+    const localElapsed = elapsed - thunderStart;
+    if (localElapsed >= 0) {
+      anyThunderActive = true;
+      // Sharp attack (20ms), hold (30ms), rapid decay (300ms)
+      let peak = 0;
+      if (localElapsed < 0.02) {
+        peak = localElapsed / 0.02;
+      } else if (localElapsed < 0.05) {
+        peak = 1;
+      } else if (localElapsed < 0.35) {
+        peak = 1 - (localElapsed - 0.05) / 0.3;
+      }
+      flash += cfg.flashIntensity * Math.max(0, peak) * (1 + i * 0.2);
+    }
+  }
+
+  // Lightning flicker — rapid random strobes during thunder window
+  // More thunders = more flicker intensity
+  let lightning = 0;
+  if (anyThunderActive && cfg.thunderCount > 1) {
+    const totalThunderWindow = (cfg.thunderCount - 1) * cfg.thunderSpacing + 0.5;
+    if (elapsed < totalThunderWindow) {
+      // Flicker: random pulses at ~30Hz, intensity scales with rank
+      const flickerRate = 30;
+      const flickerSeed = Math.floor(elapsed * flickerRate);
+      const flickerVal = pseudoRand(flickerSeed);
+      // Only fire ~40% of frames — irregular, like real lightning
+      if (flickerVal > 0.6) {
+        const flickerIntensity = (flickerVal - 0.6) / 0.4; // 0-1
+        // Scale by thunderCount: major gets subtle flickers, prince gets violent
+        lightning = flickerIntensity * cfg.flashIntensity * (cfg.thunderCount - 1) * 0.25;
+      }
+    }
+  }
+
+  flash = Math.min(flash + lightning, 1.5);
+
+  // Distortion collapses — persists through multiple thunders
+  const distortion = cfg.distortionMax * Math.max(0, 1 - t * 1.2);
+
+  // Rotation slows back
+  const rotBoost = 1 + (cfg.rotationBoostMax - 1) * Math.max(0, 1 - t * 1.5);
+
+  // Waves die
+  const waveIntensity = cfg.waveIntensityMax * Math.max(0, 1 - t * 2);
+
+  s.ritualProps = {
+    flash: {
+      intensity: flash,
+      color: flash > 0.8 ? '#ffffff' : s.glowColor, // overexposure goes white
+    },
+    distortion,
+    rotationBoost: rotBoost,
+    waves: waveIntensity > 0.01 ? {
+      origin: [0, 0, 0],
+      speed: 14,
+      intensity: waveIntensity,
+      frequency: 1,
+    } : undefined,
+    colorShift: {
+      target: s.glowColor,
+      intensity: 0.3 * (1 - t),
+    },
+  };
+}
+
+function composeReveal(s: EvocationState, t: number) {
+  // Everything fades to nothing. Demon is settling in.
+  const fade = 1 - t * t; // quadratic fade
+
+  s.ritualProps = {
+    flash: fade > 0.01 ? {
+      intensity: s.config.flashIntensity * 0.15 * fade,
       color: s.glowColor,
     } : undefined,
-  };
-
-  // Shockwave for prince
-  if (p.hasShockwave) {
-    const radius = phaseProgress < 0.5
-      ? phaseProgress * 2
-      : 2 - Math.pow(2 - phaseProgress * 2, 2) / 2;
-    s.ritualProps.shockwave = {
-      radius: radius * 2,
-      intensity: p.flashIntensity * (1 - phaseProgress),
-      expanding: true,
-    };
-  }
-
-  if (p.hasColorShift) {
-    s.ritualProps.colorShift = {
+    colorShift: fade > 0.01 ? {
       target: s.glowColor,
-      intensity: 0.8 * (1 - phaseProgress),
-    };
-  }
+      intensity: 0.15 * fade,
+    } : undefined,
+  };
 }

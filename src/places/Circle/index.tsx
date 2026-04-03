@@ -37,8 +37,15 @@ export function Circle() {
   }, []);
 
   // ─── Evocation sequence ─────────────────────────────────────────
+  const [evocationDemonVisible, setEvocationDemonVisible] = useState(false);
+
   const handleEvocationComplete = useCallback(() => {
     setCircleState('session');
+    setEvocationDemonVisible(false);
+  }, []);
+
+  const handleDemonReveal = useCallback(() => {
+    setEvocationDemonVisible(true);
   }, []);
 
   useEvocation(
@@ -47,6 +54,7 @@ export function Circle() {
     manifest,
     handleEvocationComplete,
     ritualRef,
+    handleDemonReveal,
   );
 
   // ─── Banishment sequence ────────────────────────────────────────
@@ -109,9 +117,12 @@ export function Circle() {
     setDemonDissolved(true);
   }, []);
 
-  // Reset dissolved state when starting new evocation
+  // Reset state when starting new evocation
   useEffect(() => {
-    if (circleState === 'evoking') setDemonDissolved(false);
+    if (circleState === 'evoking') {
+      setDemonDissolved(false);
+      setEvocationDemonVisible(false);
+    }
   }, [circleState]);
 
   const lines = session.conversation.map(turn => ({
@@ -120,7 +131,7 @@ export function Circle() {
   }));
 
   const isIdle = circleState === 'loading';
-  const showDemonForm = circleState === 'session' || (circleState === 'banishing' && !demonDissolved);
+  const showDemonForm = circleState === 'session' || evocationDemonVisible || (circleState === 'banishing' && !demonDissolved);
   const isDeparting = circleState === 'banishing';
   const terminalDisabled = circleState === 'evoking';
   const terminalFading = circleState === 'banishing';
@@ -151,7 +162,8 @@ export function Circle() {
               visualState={session.currentVisualState}
               waiting={session.streaming}
               speaking={isSpeaking}
-              arriving={circleState === 'session'}
+              arriving={circleState === 'session' || evocationDemonVisible}
+              arrivalDuration={manifest.rank === 'prince' ? 2.0 : manifest.rank === 'major' ? 2.0 : 1.0}
               departing={isDeparting}
               onDepartComplete={handleDepartComplete}
             />
